@@ -32,10 +32,10 @@ func TestLocalModeKeepsASignedLogThatReportVerifies(t *testing.T) {
 
 	tickEvery = 200 * time.Millisecond
 	defer func() { tickEvery = time.Minute }()
-	listen := freePort(t)
+	listen, dash := freePort(t), freePort(t)
 	dataDir := filepath.Join(t.TempDir(), "data")
 	cfg := filepath.Join(t.TempDir(), "agent.json")
-	_ = os.WriteFile(cfg, []byte(`{"otlp_listen": "`+listen+`", "aggregation": {"grace_minutes": 5, "first_batch_seconds": 1}}`), 0o600)
+	_ = os.WriteFile(cfg, []byte(`{"otlp_listen": "`+listen+`", "dashboard_listen": "`+dash+`", "aggregation": {"grace_minutes": 5, "first_batch_seconds": 1}}`), 0o600)
 	// A configured server is ignored in local mode: the test fails if it is contacted.
 	getenv := func(k string) string {
 		return map[string]string{"PLUMBLINE_SERVER": server.URL, "PLUMBLINE_DATA_DIR": dataDir}[k]
@@ -45,7 +45,7 @@ func TestLocalModeKeepsASignedLogThatReportVerifies(t *testing.T) {
 	defer cancel()
 	done := make(chan int, 1)
 	out := &lockedBuffer{}
-	go func() { done <- run(ctx, []string{"local", "--config", cfg}, getenv, out, out) }()
+	go func() { done <- run(ctx, []string{"run", "--local", "--config", cfg}, getenv, out, out) }()
 	for i := 0; ; i++ {
 		if c, err := net.Dial("tcp", listen); err == nil {
 			c.Close()
@@ -81,9 +81,40 @@ assert plumbline.flush(5)`
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	// The dashboard serves the verified log while the agent runs.
+	resp, err := http.Get("http://" + dash + "/api/log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var api struct {
+		Log *localreport.Summary `json:"log"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&api)
+	resp.Body.Close()
+	if api.Log == nil || !api.Log.Verified || api.Log.LLMCalls != 2 || len(api.Log.Series) != 1 {
+		t.Fatalf("dashboard API: %+v", api.Log)
+	}
+	if page, err := http.Get("http://" + dash + "/"); err != nil || page.StatusCode != 200 {
+		t.Fatalf("dashboard page: %v %v", page, err)
+	}
 	cancel()
 	if code := <-done; code != 0 {
 		t.Fatalf("local exit %d: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), "Dashboard: http://"+dash+"/") {
+		t.Errorf("no dashboard URL in the banner: %s", out.String())
+	}
+	// The old spelling, `plumbline-agent local`, still starts local mode.
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done2 := make(chan int, 1)
+	out2 := &lockedBuffer{}
+	go func() { done2 <- run(ctx2, []string{"local", "--config", cfg}, getenv, out2, out2) }()
+	for i := 0; i < 100 && !strings.Contains(out2.String(), "local mode"); i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel2()
+	if code := <-done2; code != 0 || !strings.Contains(out2.String(), "local mode as agt_local") {
+		t.Errorf("local alias: %d %s", code, out2.String())
 	}
 	if contacted.Load() != 0 {
 		t.Fatal("local mode contacted the server")

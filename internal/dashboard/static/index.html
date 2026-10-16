@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Plumbline · Local evidence log</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="dashboard.css">
+<script type="module" src="dashboard.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="top-row">
+    <div class="brand">
+      <span class="wordmark">Plumbline</span>
+      <span class="where">Local evidence log</span>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="controls">
+    <div class="segmented" role="group" aria-label="Time range" id="range">
+      <button type="button" data-range="24h">24 hours</button>
+      <button type="button" data-range="7d">7 days</button>
+      <button type="button" data-range="30d">30 days</button>
+      <button type="button" data-range="all">All</button>
+    </div>
+    <p class="meta" id="meta"></p>
+  </div>
+
+  <noscript><p class="notice">The dashboard needs JavaScript. Run <code>plumbline-agent report</code> for the same figures in your terminal.</p></noscript>
+
+  <section class="empty" id="empty" hidden>
+    <h1>Waiting for your first model call</h1>
+    <p>The agent is listening. Add one line to your app, make a model call, and this page fills in about a minute later.</p>
+<pre><code>pip install plumbline-sdk     →  import plumbline; plumbline.init()
+npm install plumbline-sdk     →  import * as plumbline from 'plumbline-sdk'; plumbline.init();</code></pre>
+    <p class="muted" id="empty-detail"></p>
+  </section>
+
+  <div id="board" hidden>
+    <section class="tiles" id="tiles" aria-label="Totals for the selected range"></section>
+
+    <section class="grid">
+      <article class="card span-2" id="card-calls">
+        <header class="card-head">
+          <div><h2>Model calls</h2><p class="sub" id="calls-sub"></p></div>
+          <ul class="legend" id="calls-legend" aria-label="Models"></ul>
+        </header>
+        <div class="chart" id="chart-calls"></div>
+        <details class="table-view"><summary>Show as a table</summary><div id="calls-table"></div></details>
+      </article>
+
+      <article class="card" id="card-coverage">
+        <header class="card-head">
+          <div><h2>Coverage</h2><p class="sub">Share of model calls with a guardrail decision, and of personal-data spans that were redacted</p></div>
+          <ul class="legend" id="coverage-legend"></ul>
+        </header>
+        <div class="chart" id="chart-coverage"></div>
+        <details class="table-view"><summary>Show as a table</summary><div id="coverage-table"></div></details>
+      </article>
+
+      <article class="card" id="card-tokens">
+        <header class="card-head">
+          <div><h2>Tokens</h2><p class="sub">Input and output tokens reported by the model calls</p></div>
+          <ul class="legend" id="tokens-legend"></ul>
+        </header>
+        <div class="chart" id="chart-tokens"></div>
+        <details class="table-view"><summary>Show as a table</summary><div id="tokens-table"></div></details>
+      </article>
+
+      <article class="card">
+        <header class="card-head"><div><h2>Models and regions</h2><p class="sub">Every provider, model and region in the selected range</p></div></header>
+        <div class="table-scroll" id="models-table"></div>
+      </article>
+
+      <article class="card">
+        <header class="card-head"><div><h2>Timeline</h2><p class="sub">Model and prompt changes, anomalies and evaluations</p></div></header>
+        <ol class="timeline" id="timeline"></ol>
+      </article>
+
+      <article class="card span-2">
+        <header class="card-head"><div><h2>Evidence chain</h2><p class="sub" id="chain-sub"></p></div></header>
+        <div class="chain-scroll" id="chain-table"></div>
+      </article>
+    </section>
+  </div>
+
+  <aside class="cta" id="cta">
+    <div>
+      <h2>Share this evidence with a bank, insurer or auditor</h2>
+      <p>This log is signed by your own agent's key. Plumbline's hosted service evaluates it against ten evidence objectives and issues monthly packs signed by an independent issuer, which reviewers verify in their browser.</p>
+    </div>
+    <a class="button" id="cta-link" href="#" rel="noopener noreferrer" target="_blank">Request early access</a>
+  </aside>
+</main>
+<div class="tooltip" id="tooltip" role="status" hidden></div>
+</body>
+</html>

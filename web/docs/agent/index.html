@@ -39,11 +39,13 @@
 
   <h2 id="local">Try it locally</h2>
   <p>Local mode needs no account, no server and no token. The agent signs each hourly batch with a key of its own and keeps it in its data directory; nothing is sent anywhere.</p>
-<pre><code>docker run -d --name plumbline-agent --restart unless-stopped -p 127.0.0.1:4318:4318 \
-  -v plumbline-agent:/data ghcr.io/lumetrix-advanced-technologies/plumbline-agent:latest local</code></pre>
-  <p>Add the SDK to your app (<a href="#app">below</a>), make a model call, and about a minute later read the log:</p>
-<pre><code>docker exec plumbline-agent /plumbline-agent report
-docker exec plumbline-agent /plumbline-agent report --json --since 2026-10-01</code></pre>
+<pre><code>pip install plumbline-agent &amp;&amp; plumbline-agent run --local
+npx plumbline-agent run --local
+docker run -d --name plumbline-agent -p 127.0.0.1:4318:4318 -p 127.0.0.1:4319:4319 \
+  -v plumbline-agent:/data ghcr.io/lumetrix-advanced-technologies/plumbline-agent:latest run --local</code></pre>
+  <p>Add the SDK to your app (<a href="#app">below</a>), make a model call, and about a minute later open the dashboard at <code>http://127.0.0.1:4319</code>: calls and tokens per model and region, guardrail coverage and personal-data redaction over time, tool use, a timeline of changes, anomalies and evaluations, and the evidence chain. The agent serves it on loopback only and it loads nothing from elsewhere. Set <code>PLUMBLINE_DASHBOARD_LISTEN</code> (or <code>dashboard_listen</code>) to move it, or to <code>off</code>. The same figures in a terminal:</p>
+<pre><code>plumbline-agent report
+plumbline-agent report --json --since 2026-10-01</code></pre>
   <p><code>report</code> checks every batch's signature against <code>agent.pub</code> and the chain from the first batch, then sums the calls per model and region, guardrail decisions, personal-data redaction, agent activity, prompt and model changes and anomalies. It exits 1 if a batch was edited or is missing. Keep a copy of <code>agent.pub</code> elsewhere: the log proves it has not changed relative to that key.</p>
   <p>For packs evaluated against Plumbline's evidence objectives and signed by an independent issuer, which a reviewer can verify, <a href="https://github.com/lumetrix-advanced-technologies/plumbline/issues/new?template=early-access.yml">request early access</a> to the hosted service. Connecting starts a new agent with its own data directory; the local log stays local.</p>
 
@@ -68,6 +70,8 @@ gh attestation verify plumbline-agent-linux-amd64 --repo lumetrix-advanced-techn
   <p>Use a <code>plumbline-agent-bedrock-*</code> binary if you need Amazon Bedrock usage from CloudWatch.</p>
   <h3>From source</h3>
 <pre><code>go install github.com/lumetrix-advanced-technologies/plumbline/cmd/agent@latest</code></pre>
+  <h3>pip or npm</h3>
+  <p><code>pip install plumbline-agent</code> or <code>npm install -g plumbline-agent</code> (or <code>npx plumbline-agent</code>) install the same static binary as the release for your platform. Nothing is downloaded at install time and nothing runs on install.</p>
 
   <h2 id="app">Instrument your app</h2>
   <p>Install the SDK (<code>pip install plumbline-sdk</code> or <code>npm install plumbline-sdk</code>) and add one line at start-up:</p>
@@ -100,6 +104,7 @@ plumbline-agent run --config agent.json --dry-run --replay export.jsonl</code></
       <tr><td><code>PLUMBLINE_SERVER</code></td><td><code>server</code></td><td>none (required)</td></tr>
       <tr><td><code>PLUMBLINE_DATA_DIR</code></td><td><code>data_dir</code></td><td><code>./.plumbline-agent</code> (<code>/data</code> in the container)</td></tr>
       <tr><td><code>PLUMBLINE_OTLP_LISTEN</code></td><td><code>otlp_listen</code></td><td><code>127.0.0.1:4318</code></td></tr>
+      <tr><td><code>PLUMBLINE_DASHBOARD_LISTEN</code></td><td><code>dashboard_listen</code></td><td><code>127.0.0.1:4319</code> in local mode; <code>off</code> turns it off</td></tr>
       <tr><td><code>PLUMBLINE_OTLP_ALLOW_REMOTE=1</code></td><td><code>otlp_allow_remote</code></td><td>off: only loopback addresses may be used</td></tr>
       <tr><td><code>PLUMBLINE_ENROL_TOKEN</code></td><td></td><td>The token for <code>plumbline-agent enrol</code> when <code>--token</code> is not given.</td></tr>
       <tr><td><code>PLUMBLINE_SALT_SECRET</code></td><td><code>salt_secret_env</code> names the variable</td><td>With <code>connect</code>, a random secret kept in the data directory.</td></tr>

@@ -2,8 +2,9 @@
 // AI product, turns its telemetry into signed hourly aggregates and sends only
 // those (docs/architecture.md §3).
 //
-//	plumbline-agent local                         # no server: keep signed batches in the data directory
+//	plumbline-agent run --local                   # no server: keep signed batches locally, with a dashboard
 //	plumbline-agent report [--json]               # verify and summarise the local evidence log
+//	plumbline-agent dashboard [--data-dir <dir>]  # the dashboard alone, for a copied log
 //	plumbline-agent connect <token>               # enrol once, then run (the one-command install)
 //	plumbline-agent enrol --config agent.json      # token in PLUMBLINE_ENROL_TOKEN
 //	plumbline-agent [run] --config agent.json [--dry-run] [--replay export.jsonl]
@@ -23,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,6 +33,7 @@ import (
 	"time"
 
 	"github.com/lumetrix-advanced-technologies/plumbline/internal/agent"
+	"github.com/lumetrix-advanced-technologies/plumbline/internal/dashboard"
 	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
 	"github.com/lumetrix-advanced-technologies/plumbline/internal/localreport"
 )
@@ -39,15 +42,17 @@ import (
 var version = "dev"
 
 const usage = `usage:
-  plumbline-agent local [--config <agent.json>]
+  plumbline-agent run --local [--config <agent.json>]
   plumbline-agent report [--config <agent.json>] [--data-dir <dir>] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
+  plumbline-agent dashboard [--config <agent.json>] [--data-dir <dir>] [--listen <host:port>]
   plumbline-agent connect [--config <agent.json>] <token>
   plumbline-agent enrol --config <agent.json> [--token <token>]
   plumbline-agent [run] --config <agent.json> [--dry-run] [--replay <export.jsonl>]
   plumbline-agent version
 
-local runs with no server and no token: batches are signed with the agent's
-own key and kept in <data-dir>/local, and report verifies and summarises them.
+run --local (or just local) runs with no server and no token: batches are
+signed with the agent's own key and kept in <data-dir>/local, a dashboard is
+served on http://127.0.0.1:4319, and report verifies and summarises the log.
 The enrolment token is read from PLUMBLINE_ENROL_TOKEN when --token is not
 given. Secrets are read from the environment variables the config names.
 Exit status: 0 ok, 1 runtime error, 2 usage or config error.
@@ -61,7 +66,7 @@ func main() {
 
 func run(ctx context.Context, args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	cmd := "run"
-	if len(args) > 0 && (args[0] == "run" || args[0] == "enrol" || args[0] == "connect" || args[0] == "version" || args[0] == "local" || args[0] == "report") {
+	if len(args) > 0 && (args[0] == "run" || args[0] == "enrol" || args[0] == "connect" || args[0] == "version" || args[0] == "local" || args[0] == "report" || args[0] == "dashboard") {
 		cmd, args = args[0], args[1:]
 	}
 	fs := flag.NewFlagSet("plumbline-agent "+cmd, flag.ContinueOnError)
@@ -74,6 +79,8 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	since := fs.String("since", "", "report: first day to sum, YYYY-MM-DD (UTC)")
 	until := fs.String("until", "", "report: last day to sum, YYYY-MM-DD (UTC)")
 	asJSON := fs.Bool("json", false, "report: print JSON")
+	localMode := fs.Bool("local", false, "run: no server; keep signed batches in the data directory")
+	listen := fs.String("listen", "", "dashboard: address to serve on (default from the config, 127.0.0.1:4319)")
 	maxArgs := 0
 	if cmd == "connect" {
 		maxArgs = 1 // the token
@@ -94,17 +101,20 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		}
 		return connect(ctx, *configPath, fs.Arg(0), getenv, stdout, stderr, log)
 	case "local":
-		if *dryRun || *replay != "" || *token != "" || *dataDir != "" || *since != "" || *until != "" || *asJSON {
-			fmt.Fprint(stderr, usage)
-			return 2
-		}
-		return local(ctx, *configPath, getenv, stdout, stderr, log)
+		*localMode = true
+		cmd = "run"
 	case "report":
-		if *dryRun || *replay != "" || *token != "" {
+		if *dryRun || *replay != "" || *token != "" || *localMode || *listen != "" {
 			fmt.Fprint(stderr, usage)
 			return 2
 		}
 		return report(*configPath, *dataDir, *since, *until, *asJSON, getenv, stdout, stderr)
+	case "dashboard":
+		if *dryRun || *replay != "" || *token != "" || *localMode || *since != "" || *until != "" || *asJSON {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		return dashboardOnly(ctx, *configPath, *dataDir, *listen, getenv, stdout, stderr, log)
 	case "enrol":
 		if *dryRun || *replay != "" {
 			fmt.Fprint(stderr, usage)
@@ -112,9 +122,16 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		}
 		return doEnrol(ctx, *configPath, *token, getenv, stdout, stderr)
 	}
-	if *token != "" || *dataDir != "" || *since != "" || *until != "" || *asJSON {
+	if *token != "" || *dataDir != "" || *since != "" || *until != "" || *asJSON || *listen != "" {
 		fmt.Fprint(stderr, usage)
 		return 2
+	}
+	if *localMode {
+		if *dryRun || *replay != "" {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		return local(ctx, *configPath, getenv, stdout, stderr, log)
 	}
 	cfg, err := agent.LoadConfig(*configPath, getenv)
 	if err != nil {
@@ -256,12 +273,75 @@ func local(ctx context.Context, configPath string, getenv func(string) string, s
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	fmt.Fprintf(stdout, "plumbline-agent %s in local mode as %s: listening for spans on %s; signed batches are kept in %s and never sent.\nSee them with: plumbline-agent report\n",
+	stopDash, url, err := startDashboard(cfg.DashboardListen, cfg.DataDir, log)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer stopDash()
+	fmt.Fprintf(stdout, "plumbline-agent %s in local mode as %s: listening for spans on %s; signed batches are kept in %s and never sent.\n",
 		version, a.AgentID(), cfg.OTLPListen, filepath.Join(cfg.DataDir, agent.LocalDir))
+	if url != "" {
+		fmt.Fprintf(stdout, "Dashboard: %s\n", url)
+	}
+	fmt.Fprintln(stdout, "In a terminal: plumbline-agent report")
 	if err := a.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("agent stopped", "error", err.Error())
 		return 1
 	}
+	return 0
+}
+
+// startDashboard serves the dashboard for dataDir on addr ("" or "off": not
+// at all) and returns a stop function and the URL to open.
+func startDashboard(addr, dataDir string, log *slog.Logger) (func(), string, error) {
+	if addr == "" || addr == "off" {
+		return func() {}, "", nil
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, "", fmt.Errorf("plumbline-agent: dashboard: %w (set PLUMBLINE_DASHBOARD_LISTEN, or off)", err)
+	}
+	srv := &http.Server{Handler: dashboard.Handler(dashboard.Options{DataDir: dataDir, Version: version}), ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+	if ip := net.ParseIP(host); ip == nil || ip.IsUnspecified() || ip.IsLoopback() {
+		host = "127.0.0.1"
+	}
+	url := "http://" + net.JoinHostPort(host, port) + "/"
+	log.Info("dashboard", "url", url)
+	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}, url, nil
+}
+
+// dashboardOnly serves the dashboard for a data directory (a copied log, or
+// a local agent running elsewhere) until ctx ends.
+func dashboardOnly(ctx context.Context, configPath, dataDir, listen string, getenv func(string) string, stdout, stderr io.Writer, log *slog.Logger) int {
+	cfg, err := agent.LoadConfig(configPath, getenv)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if dataDir == "" {
+		dataDir = cfg.DataDir
+	}
+	if listen == "" {
+		listen = cfg.DashboardListen
+	}
+	if listen == "off" || listen == "" {
+		listen = "127.0.0.1:4319"
+	}
+	stop, url, err := startDashboard(listen, dataDir, log)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer stop()
+	fmt.Fprintf(stdout, "Dashboard for %s: %s\n", dataDir, url)
+	<-ctx.Done()
 	return 0
 }
 

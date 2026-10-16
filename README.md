@@ -12,14 +12,16 @@ Run it on your own, with nothing leaving your machine. Or connect it to Plumblin
 
 ## Quick start: local mode (no account, no server)
 
-**1. Run the agent.** It listens for spans on your machine and keeps signed hourly batches in its data directory.
+**1. Run the agent.** Pick whichever you already have:
 
 ```bash
-docker run -d --name plumbline-agent --restart unless-stopped -p 127.0.0.1:4318:4318 \
-  -v plumbline-agent:/data ghcr.io/lumetrix-advanced-technologies/plumbline-agent:latest local
+pip install plumbline-agent && plumbline-agent run --local      # Python
+npx plumbline-agent run --local                                 # Node.js
+docker run -d --name plumbline-agent -p 127.0.0.1:4318:4318 -p 127.0.0.1:4319:4319 \
+  -v plumbline-agent:/data ghcr.io/lumetrix-advanced-technologies/plumbline-agent:latest run --local
 ```
 
-Or download a binary from [Releases](https://github.com/lumetrix-advanced-technologies/plumbline/releases) and run `./plumbline-agent-linux-amd64 local`.
+Or download a binary from [Releases](https://github.com/lumetrix-advanced-technologies/plumbline/releases) and run `./plumbline-agent-linux-amd64 run --local`. The pip and npm packages carry the same static binary as the release for your platform: nothing is downloaded at install time and nothing runs on install.
 
 **2. Add one line to your app.**
 
@@ -38,10 +40,16 @@ import * as plumbline from 'plumbline-sdk'; plumbline.init();   // Node.js
 
 `init()` instruments the OpenAI, Anthropic and Bedrock client libraries you already use. Nothing else changes in your code.
 
-**3. See your evidence.** About a minute after the first model call, and every hour after that:
+**3. Open the dashboard** at **http://127.0.0.1:4319**.
+
+![The local dashboard: a week of model calls per hour by model, guardrail coverage and tokens](docs/dashboard.png)
+
+About a minute after the first model call, and every hour after that, it shows calls and tokens per model and region, guardrail coverage and personal-data redaction over time, agent tool use, a timeline of model and prompt changes, anomalies and evaluations, and the evidence chain with every batch's digest. It is served by the agent on your machine only, reads the same verified log as the report, and loads nothing from anywhere else.
+
+In a terminal, the same figures:
 
 ```bash
-docker exec plumbline-agent /plumbline-agent report
+plumbline-agent report            # docker exec plumbline-agent /plumbline-agent report
 ```
 
 ```
@@ -60,7 +68,7 @@ Content         240 spans arrived with message content; the agent dropped it
 Change          2026-09-01T01:40:13Z: model anthropic.claude-sonnet-4-5 -> anthropic.claude-sonnet-4-6
 ```
 
-`report --json` gives the same as JSON, and `--since` / `--until` (YYYY-MM-DD) pick days. The report checks every batch's signature and the chain from the first batch, and fails if a batch was edited or removed. Keep a copy of `agent.pub` from the data directory somewhere else: the log proves it has not changed relative to that key.
+`report --json` gives the same as JSON, and `--since` / `--until` (YYYY-MM-DD) pick days. The report and the dashboard check every batch's signature and the chain from the first batch, and fail if a batch was edited or removed. Keep a copy of `agent.pub` from the data directory somewhere else: the log proves it has not changed relative to that key. `plumbline-agent dashboard --data-dir <copy>` shows a copied log.
 
 ## Record what no client library knows
 
@@ -144,6 +152,7 @@ Use the `plumbline-agent-bedrock-*` binaries for Amazon Bedrock usage from Cloud
 ```bash
 make check    # gofmt, vet, staticcheck, govulncheck, tests, every verifier on every vector, SDK tests
 make agent-dry
+make dashboard-demo   # the dashboard on a week of synthetic data
 ```
 
 The tests need Node 22+ and Python 3.10+ with `cryptography`. Go code uses only the standard library, plus the AWS SDK in the `bedrock` build. Two rules every change keeps: **no content leaves the customer** (no code path in the agent or the SDKs may send prompt or completion text, span content or raw trace IDs), and **the verifiers agree** (vectors are added, never changed).

@@ -84,6 +84,14 @@ func TestReadVerifiesAndSumsTheLog(t *testing.T) {
 	if !s.Verified || s.Batches != len(windows) || s.LLMCalls != calls || s.GuardedCalls != guarded || s.Traces != traces || len(s.Models) == 0 {
 		t.Fatalf("summary = %+v (want %d batches, %d calls, %d guarded, %d traces)", s, len(windows), calls, guarded, traces)
 	}
+	// One point per window, summing to the totals; the newest batch first in Recent.
+	var seriesCalls int64
+	for _, p := range s.Series {
+		seriesCalls += p.LLMCalls
+	}
+	if len(s.Series) != len(windows) || seriesCalls != calls || len(s.Recent) != len(windows) || s.Recent[0].Seq != int64(len(windows)) || s.Recent[0].Digest != s.LastHash {
+		t.Errorf("series %d points, %d calls; recent %+v", len(s.Series), seriesCalls, s.Recent)
+	}
 	var modelCalls int64
 	for _, m := range s.Models {
 		modelCalls += m.Calls

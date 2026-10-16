@@ -6,9 +6,9 @@ GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 VERSION ?= dev
 
-.PHONY: check fmt-check vet staticcheck vuln test vectors sdk-test release-binaries release-sums agent-image agent-dry
+.PHONY: check fmt-check vet staticcheck vuln test vectors sdk-test package-test release-binaries release-sums packages agent-image agent-dry
 
-check: fmt-check vet staticcheck vuln test vectors sdk-test
+check: fmt-check vet staticcheck vuln test vectors sdk-test package-test
 
 fmt-check:
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
@@ -40,6 +40,14 @@ sdk-test:
 	python3 -m unittest discover -s sdk/python/tests
 	node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs sdk/js/test/real-libs.test.mjs
 
+# The pip and npm packages of the agent, built from release binaries (D-054).
+package-test:
+	python3 -m unittest discover -s packaging -p 'test_*.py'
+
+packages: release-binaries
+	python3 packaging/build_wheels.py --dist dist --version $(VERSION) --out dist/pypi
+	python3 packaging/build_npm.py --dist dist --version $(VERSION) --out dist/npm
+
 # Static binaries: plumbline-verify, plumbline-agent and plumbline-agent-bedrock
 # (with the Bedrock usage poller) for every platform, or for GOOS/GOARCH alone.
 release-binaries:
@@ -58,3 +66,7 @@ agent-image:
 
 agent-dry:
 	PLUMBLINE_SALT_SECRET=$${PLUMBLINE_SALT_SECRET:-dry-run-salt-not-a-secret} go run ./cmd/agent --config agent.example.json --dry-run --replay concierge/testdata/otlp-sample.jsonl
+
+# The local dashboard on a week of synthetic data, for working on its design.
+dashboard-demo:
+	rm -rf dist/demo-log && go run ./tools/demolog -out dist/demo-log -days 7 && go run ./cmd/agent dashboard --data-dir dist/demo-log

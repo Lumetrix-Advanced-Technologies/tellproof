@@ -27,6 +27,8 @@ type Config struct {
 	DataDir         string `json:"data_dir"`
 	OTLPListen      string `json:"otlp_listen"`
 	OTLPAllowRemote bool   `json:"otlp_allow_remote"` // listen beyond loopback (the receiver has no auth)
+	// DashboardListen is where local mode serves its dashboard; "off" turns it off.
+	DashboardListen string `json:"dashboard_listen"`
 	Langfuse        struct {
 		Enabled      bool        `json:"enabled"`
 		BaseURL      string      `json:"base_url"`
@@ -81,7 +83,7 @@ func (e EvalScore) toLangfuse() langfuse.EvalScore {
 // the environment overrides PLUMBLINE_SERVER, PLUMBLINE_DATA_DIR and
 // PLUMBLINE_OTLP_LISTEN, and validates the result.
 func LoadConfig(path string, getenv func(string) string) (Config, error) {
-	c := Config{DataDir: "./.plumbline-agent", OTLPListen: "127.0.0.1:4318", SaltSecretEnv: "PLUMBLINE_SALT_SECRET"}
+	c := Config{DataDir: "./.plumbline-agent", OTLPListen: "127.0.0.1:4318", DashboardListen: "127.0.0.1:4319", SaltSecretEnv: "PLUMBLINE_SALT_SECRET"}
 	d := aggregate.DefaultConfig()
 	c.Aggregation.GraceMinutes = int(d.Grace / time.Minute)
 	c.Aggregation.FirstBatchSeconds = 60
@@ -100,7 +102,7 @@ func LoadConfig(path string, getenv func(string) string) (Config, error) {
 			return c, fmt.Errorf("agent: config %s: unexpected data after the JSON document", path)
 		}
 	}
-	for env, field := range map[string]*string{"PLUMBLINE_SERVER": &c.Server, "PLUMBLINE_DATA_DIR": &c.DataDir, "PLUMBLINE_OTLP_LISTEN": &c.OTLPListen} {
+	for env, field := range map[string]*string{"PLUMBLINE_SERVER": &c.Server, "PLUMBLINE_DATA_DIR": &c.DataDir, "PLUMBLINE_OTLP_LISTEN": &c.OTLPListen, "PLUMBLINE_DASHBOARD_LISTEN": &c.DashboardListen} {
 		if v := getenv(env); v != "" {
 			*field = v
 		}
@@ -133,6 +135,16 @@ func (c Config) validate() error {
 	loopback := host == "localhost" || (ip != nil && ip.IsLoopback())
 	if !loopback && !c.OTLPAllowRemote {
 		return fmt.Errorf("agent: otlp_listen %q is not a loopback address; the receiver has no authentication, so set otlp_allow_remote only behind a network you control", c.OTLPListen)
+	}
+	if c.DashboardListen != "" && c.DashboardListen != "off" {
+		host, _, err := net.SplitHostPort(c.DashboardListen)
+		if err != nil {
+			return fmt.Errorf("agent: dashboard_listen %q: %w", c.DashboardListen, err)
+		}
+		ip := net.ParseIP(host)
+		if !(host == "localhost" || (ip != nil && ip.IsLoopback())) && !c.OTLPAllowRemote {
+			return fmt.Errorf("agent: dashboard_listen %q is not a loopback address; set otlp_allow_remote only behind a network you control", c.DashboardListen)
+		}
 	}
 	if c.Aggregation.GraceMinutes < 1 || c.Aggregation.GraceMinutes > 55 {
 		return errors.New("agent: aggregation.grace_minutes must be between 1 and 55")

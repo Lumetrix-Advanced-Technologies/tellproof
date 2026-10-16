@@ -65,7 +65,41 @@ type Summary struct {
 	LateSpans      int64                   `json:"late_spans"`
 	Traces         int64                   `json:"traces_committed"`
 	Usage          []batch.Usage           `json:"provider_usage"`
+
+	// Series is one point per window in range, oldest first, with the
+	// additive batches of a window summed (for the dashboard's charts).
+	Series []Point `json:"series"`
+	// Recent are the newest batches of the whole log, newest first.
+	Recent []BatchRow `json:"recent_batches"`
 }
+
+// Point is one window's figures.
+type Point struct {
+	Start          string  `json:"start"`
+	Models         []Model `json:"models"`
+	LLMCalls       int64   `json:"llm_calls"`
+	GuardedCalls   int64   `json:"guarded_calls"`
+	Blocked        int64   `json:"blocked_calls"`
+	PIISpans       int64   `json:"pii_spans"`
+	PIIRedacted    int64   `json:"pii_spans_redacted"`
+	ContentDropped int64   `json:"content_present_spans"`
+	ToolCalls      int64   `json:"tool_calls"`
+	ToolErrors     int64   `json:"tool_errors"`
+	Traces         int64   `json:"traces_committed"`
+	LateSpans      int64   `json:"late_spans"`
+}
+
+// BatchRow is one batch of the chain.
+type BatchRow struct {
+	Seq         int64  `json:"seq"`
+	WindowStart string `json:"window_start"`
+	Digest      string `json:"digest"`
+	Traces      int64  `json:"traces"`
+	LLMCalls    int64  `json:"llm_calls"`
+}
+
+// recentMax is how many batches Recent keeps.
+const recentMax = 48
 
 // Range limits the windows summed; zero values mean no limit.
 type Range struct{ From, To time.Time }
@@ -94,7 +128,7 @@ func Read(dataDir string, r Range) (*Summary, error) {
 		return nil, err
 	}
 	s := &Summary{AgentID: agentID, Verified: true, Models: []Model{}, Evals: []batch.Eval{}, Transitions: []batch.Transition{},
-		Anomalies: []batch.Anomaly{}, Versions: []batch.ObservedVersion{}, Usage: []batch.Usage{}}
+		Anomalies: []batch.Anomaly{}, Versions: []batch.ObservedVersion{}, Usage: []batch.Usage{}, Series: []Point{}, Recent: []BatchRow{}}
 	acc := newAccumulator()
 	var prev *string
 	for i, seq := range seqs {
@@ -113,6 +147,10 @@ func Read(dataDir string, r Range) (*Summary, error) {
 		prev = &digest
 		s.Batches++
 		s.LastSeq, s.LastHash = seq, digest
+		s.Recent = append(s.Recent, BatchRow{Seq: seq, WindowStart: bt.Window.Start, Digest: digest, Traces: bt.Commit.Leaves, LLMCalls: bt.Metrics.Guardrails.LLMCalls})
+		if len(s.Recent) > recentMax {
+			s.Recent = s.Recent[1:]
+		}
 		if r.has(bt.Window.Start) {
 			acc.add(s, bt)
 		}
@@ -153,6 +191,7 @@ func verifyOne(q *queue.Queue, seq int64, pub ed25519.PublicKey, agentID string)
 }
 
 type accumulator struct {
+	points   map[string]*Point
 	models   map[[3]string]*Model
 	usage    map[[3]string]*batch.Usage
 	evals    map[batch.Eval]bool
@@ -160,7 +199,7 @@ type accumulator struct {
 }
 
 func newAccumulator() *accumulator {
-	return &accumulator{models: map[[3]string]*Model{}, usage: map[[3]string]*batch.Usage{}, evals: map[batch.Eval]bool{}, versions: map[batch.ObservedVersion]bool{}}
+	return &accumulator{points: map[string]*Point{}, models: map[[3]string]*Model{}, usage: map[[3]string]*batch.Usage{}, evals: map[batch.Eval]bool{}, versions: map[batch.ObservedVersion]bool{}}
 }
 
 // add sums one batch. Windows are additive (D-032): an hour sent early and
@@ -173,6 +212,33 @@ func (a *accumulator) add(s *Summary, b *batch.Batch) {
 		s.To = b.Window.End
 	}
 	m := b.Metrics
+	p := a.points[b.Window.Start]
+	if p == nil {
+		p = &Point{Start: b.Window.Start, Models: []Model{}}
+		a.points[b.Window.Start] = p
+	}
+	p.LLMCalls += m.Guardrails.LLMCalls
+	p.GuardedCalls += m.Guardrails.GuardedCalls
+	p.Blocked += m.Guardrails.Blocked
+	p.PIISpans += m.PII.Spans
+	p.PIIRedacted += m.PII.SpansRedacted
+	p.ContentDropped += m.ContentPresentSpans
+	p.ToolCalls += m.Agent.ToolCalls
+	p.ToolErrors += m.Agent.ToolErrors
+	p.Traces += b.Commit.Leaves
+	p.LateSpans += m.LateSpans
+	for _, t := range m.Tokens {
+		found := false
+		for i := range p.Models {
+			if pm := &p.Models[i]; pm.Provider == t.Provider && pm.Model == t.Model && pm.Region == t.Region {
+				pm.Calls, pm.InputTokens, pm.OutputTokens = pm.Calls+t.Calls, pm.InputTokens+t.InputTokens, pm.OutputTokens+t.OutputTokens
+				found = true
+			}
+		}
+		if !found {
+			p.Models = append(p.Models, Model{Provider: t.Provider, Model: t.Model, Region: t.Region, Calls: t.Calls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens})
+		}
+	}
 	for _, t := range m.Tokens {
 		k := [3]string{t.Provider, t.Model, t.Region}
 		if a.models[k] == nil {
@@ -222,6 +288,13 @@ func (a *accumulator) add(s *Summary, b *batch.Batch) {
 }
 
 func (a *accumulator) finish(s *Summary) {
+	for _, p := range a.points {
+		s.Series = append(s.Series, *p)
+	}
+	sort.Slice(s.Series, func(i, j int) bool { return s.Series[i].Start < s.Series[j].Start })
+	for i, j := 0, len(s.Recent)-1; i < j; i, j = i+1, j-1 {
+		s.Recent[i], s.Recent[j] = s.Recent[j], s.Recent[i]
+	}
 	for _, m := range a.models {
 		s.Models = append(s.Models, *m)
 	}

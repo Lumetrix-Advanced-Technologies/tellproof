@@ -72,6 +72,64 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Plumbline $GITHUB_REF_NAME" --notes-file dist/RELEASE-NOTES.md dist/*
 
+  packages:
+    # The agent for pip and npm (D-054): built from the same binaries, attested.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write, attestations: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/download-artifact@v4
+        with: { pattern: bin-*, path: dist, merge-multiple: true }
+      - run: |
+          v="${GITHUB_REF_NAME#v}"
+          python3 packaging/build_wheels.py --dist dist --version "$v" --out pkg/pypi
+          python3 packaging/build_npm.py --dist dist --version "$v" --out pkg/npm
+          for d in pkg/npm/*/; do (cd "$d" && npm pack --pack-destination ../../tarballs >/dev/null); done
+          ls -l pkg/pypi pkg/tarballs
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            pkg/pypi/*.whl
+            pkg/tarballs/*.tgz
+      - uses: actions/upload-artifact@v4
+        with: { name: packages, path: pkg, if-no-files-found: error }
+
+  pypi-agent:
+    # Publishing needs the founders' PyPI setup: a trusted publisher for
+    # plumbline-agent (this workflow, environment release) and the repository
+    # variable PUBLISH_PACKAGES=true. Until then this job is skipped.
+    needs: [packages, release]
+    if: vars.PUBLISH_PACKAGES == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: { id-token: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: packages, path: pkg }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with: { packages-dir: pkg/pypi }
+
+  npm-agent:
+    # Needs an NPM_TOKEN secret and PUBLISH_PACKAGES=true. Platform packages
+    # first, so the main package's optional dependencies exist when it lands.
+    needs: [packages, release]
+    if: vars.PUBLISH_PACKAGES == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
+      - uses: actions/download-artifact@v4
+        with: { name: packages, path: pkg }
+      - env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
+        run: |
+          for d in pkg/npm/plumbline-agent-*/; do (cd "$d" && npm publish --provenance --access public); done
+          cd pkg/npm/plumbline-agent && npm publish --provenance --access public
+
   image:
     needs: check
     runs-on: ubuntu-latest
