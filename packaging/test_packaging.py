@@ -97,6 +97,11 @@ class Packaging(unittest.TestCase):
         main = json.loads((out / "plumbline-agent" / "package.json").read_text())
         self.assertEqual(main["version"], "1.2.3")
         self.assertEqual(main["bin"], {"plumbline-agent": "bin/plumbline-agent.js"})
+        # npm's provenance check needs the repository exactly as GitHub names it (case included).
+        sdk = json.loads((HERE.parent / "sdk" / "js" / "package.json").read_text()) if (HERE.parent / "sdk" / "js" / "package.json").exists() else None
+        self.assertEqual(main["repository"]["url"], "git+https://github.com/Lumetrix-Advanced-Technologies/plumbline.git")
+        if sdk:
+            self.assertEqual(sdk["repository"]["url"], main["repository"]["url"])
         self.assertNotIn("scripts", main)  # no install scripts
         self.assertEqual(sorted(main["optionalDependencies"]), sorted(f"plumbline-agent-{o}-{c}" for o, c in build_npm.PLATFORMS.values()))
         self.assertTrue(all(v == "1.2.3" for v in main["optionalDependencies"].values()))
@@ -104,6 +109,7 @@ class Packaging(unittest.TestCase):
             pj = json.loads((out / name / "package.json").read_text())
             os_, cpu = name.split("-")[-2:]
             self.assertEqual((pj["os"], pj["cpu"], pj["version"]), ([os_], [cpu], "1.2.3"))
+            self.assertEqual(pj["repository"], main["repository"])
             self.assertTrue((out / name / "LICENSE").exists())
 
         node = shutil.which("node")

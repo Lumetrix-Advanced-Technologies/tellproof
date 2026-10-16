@@ -24,7 +24,9 @@ PLATFORMS = {
     ("windows", "amd64"): ("win32", "x64"),
     ("windows", "arm64"): ("win32", "arm64"),
 }
-REPO = {"type": "git", "url": "git+https://github.com/lumetrix-advanced-technologies/plumbline.git"}
+# npm checks provenance against this URL, case-sensitively: it must name the
+# repository exactly as GitHub does.
+REPO = {"type": "git", "url": "git+https://github.com/Lumetrix-Advanced-Technologies/plumbline.git"}
 HOME = "https://github.com/lumetrix-advanced-technologies/plumbline"
 
 LAUNCHER = r"""#!/usr/bin/env node
