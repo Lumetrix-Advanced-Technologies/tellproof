@@ -1,0 +1,23 @@
+{
+  "name": "plumbline-sdk",
+  "version": "0.1.0",
+  "description": "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Plumbline agent.",
+  "main": "./lib/index.cjs",
+  "module": "./lib/index.mjs",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.mjs",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "README.md", "LICENSE"],
+  "license": "Apache-2.0",
+  "engines": { "node": ">=18" },
+  "sideEffects": false,
+  "dependencies": {},
+  "scripts": { "test": "node --test test/sdk.test.mjs test/instrument.test.mjs test/real-libs.test.mjs" },
+  "repository": { "type": "git", "url": "git+https://github.com/Lumetrix-Advanced-Technologies/plumbline.git", "directory": "sdk/js" }
+}

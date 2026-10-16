@@ -1,0 +1,7 @@
+.git
+.dev
+.env*
+dist
+**/__pycache__
+**/node_modules
+*.test

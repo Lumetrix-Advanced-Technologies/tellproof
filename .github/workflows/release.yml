@@ -1,0 +1,96 @@
+# Releases plumbline-verify and plumbline-agent when a maintainer pushes a tag
+# vX.Y.Z (D-050). Binaries are built per platform from this repository's
+# source, checksummed, and attested together with the release notes (GitHub
+# artifact attestations: Sigstore-signed SLSA provenance tied to this workflow
+# and commit). The GitHub release is created as a draft for a maintainer to
+# publish; the container image waits for approval in the `release` environment.
+#
+# Check a download:
+#   sha256sum --ignore-missing -c SHA256SUMS
+#   gh attestation verify plumbline-verify-linux-amd64 --repo lumetrix-advanced-technologies/plumbline
+#   gh attestation verify RELEASE-NOTES.md --repo lumetrix-advanced-technologies/plumbline
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions: {}
+concurrency: { group: release, cancel-in-progress: false }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.27" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install cryptography
+      - run: make check
+      - name: The tag has release notes
+        run: scripts/release-notes.sh "$GITHUB_REF_NAME" > /dev/null
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.27" }
+      - run: make release-binaries GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} VERSION="$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/plumbline-*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { contents: write, id-token: write, attestations: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: bin-*, path: dist, merge-multiple: true }
+      - run: scripts/release-notes.sh "$GITHUB_REF_NAME" > dist/RELEASE-NOTES.md
+      - run: make release-sums
+      - name: Version check
+        run: |
+          chmod +x dist/plumbline-verify-linux-amd64 dist/plumbline-agent-linux-amd64
+          dist/plumbline-verify-linux-amd64 --version | grep -qx "plumbline-verify $GITHUB_REF_NAME"
+          dist/plumbline-agent-linux-amd64 version | grep -q "plumbline-agent $GITHUB_REF_NAME"
+      - uses: actions/attest-build-provenance@v2
+        with: { subject-path: "dist/*" }
+      - name: Draft release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Plumbline $GITHUB_REF_NAME" --notes-file dist/RELEASE-NOTES.md dist/*
+
+  image:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: { contents: read, packages: write, id-token: write, attestations: write }
+    env: { IMAGE: ghcr.io/lumetrix-advanced-technologies/plumbline-agent }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ github.token }}" }
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cmd/agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ github.ref_name }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }},${{ env.IMAGE }}:latest
+      - uses: actions/attest-build-provenance@v2
+        with: { subject-name: "${{ env.IMAGE }}", subject-digest: "${{ steps.push.outputs.digest }}", push-to-registry: true }

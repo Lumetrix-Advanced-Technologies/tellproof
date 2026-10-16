@@ -1,0 +1,54 @@
+# Publishes the SDKs when a maintainer pushes a tag sdk-vX.Y.Z whose version
+# matches sdk/python/pyproject.toml and sdk/js/package.json (D-050). Each
+# publish waits for approval in the `release` environment. PyPI uses trusted
+# publishing (no stored token); npm publishes with provenance.
+name: sdk-release
+on:
+  push:
+    tags: ["sdk-v*"]
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs: { version: "${{ steps.v.outputs.version }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - id: v
+        run: |
+          v="${GITHUB_REF_NAME#sdk-v}"
+          py=$(python -c 'import tomllib; print(tomllib.load(open("sdk/python/pyproject.toml","rb"))["project"]["version"])')
+          js=$(node -p 'require("./sdk/js/package.json").version')
+          [ "$py" = "$v" ] && [ "$js" = "$v" ] || { echo "tag $v, pyproject $py, package.json $js"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - run: python -m unittest discover -s sdk/python/tests
+      - run: node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs
+
+  pypi:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install build && python -m build sdk/python --outdir dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  npm:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
+      - run: npm publish --provenance --access public
+        working-directory: sdk/js
+        env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }

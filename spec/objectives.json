@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "rule_kinds": [
+    "ratio_at_least",
+    "max_value",
+    "zero_count",
+    "freshness_within",
+    "all_declared"
+  ],
+  "objectives": [
+    {
+      "id": "EO-LOG-01",
+      "version": 1,
+      "title": "Trace coverage",
+      "rule": {
+        "kind": "ratio_at_least",
+        "numerator": "traced_tokens",
+        "denominator": "billed_tokens",
+        "threshold": 0.98,
+        "attention_band": 0.01
+      },
+      "scope": "production",
+      "basis": "Traced token counts reconciled hourly against provider usage APIs, scoped to production keys.",
+      "maps_to": [
+        "eu-ai-act/art-12",
+        "aiuc-1/E",
+        "iso-42001/A.6.2.8",
+        "apra-ai-letter/continuous-monitoring"
+      ]
+    },
+    {
+      "id": "EO-LIN-01",
+      "version": 1,
+      "title": "Model and provider lineage",
+      "rule": {
+        "kind": "all_declared",
+        "observed": "models_observed",
+        "declared": "declared_models"
+      },
+      "scope": "production",
+      "basis": "gen_ai.provider.name and request/response model on every span, compared with the declared inventory.",
+      "maps_to": [
+        "apra-ai-letter/supply-chain",
+        "csa-aicm/STA",
+        "aiuc-1/E"
+      ]
+    },
+    {
+      "id": "EO-CHG-01",
+      "version": 1,
+      "title": "Material-change log",
+      "rule": {
+        "kind": "zero_count",
+        "metric": "unlogged_transitions"
+      },
+      "scope": "production",
+      "basis": "Model and prompt-version transitions detected in spans, matched to the change register.",
+      "maps_to": [
+        "apra-ai-letter/material-change",
+        "csa-aicm/CCC",
+        "iso-42001/A.6.2.6"
+      ]
+    },
+    {
+      "id": "EO-PII-01",
+      "version": 1,
+      "title": "PII redaction coverage",
+      "rule": {
+        "kind": "ratio_at_least",
+        "numerator": "pii_spans_redacted",
+        "denominator": "pii_spans",
+        "threshold": 1.0,
+        "attention_band": 0.001
+      },
+      "scope": "production",
+      "basis": "Redaction-processor events joined to spans tagged as personal data.",
+      "maps_to": [
+        "aiuc-1/A",
+        "csa-aicm/DSP",
+        "privacy-act/app-11"
+      ]
+    },
+    {
+      "id": "EO-CNT-01",
+      "version": 1,
+      "title": "Content minimisation",
+      "rule": {
+        "kind": "zero_count",
+        "metric": "content_present_spans"
+      },
+      "scope": "production",
+      "basis": "Absence of opt-in message content attributes across exported spans.",
+      "maps_to": [
+        "aiuc-1/A",
+        "csa-aicm/DSP"
+      ]
+    },
+    {
+      "id": "EO-GRD-01",
+      "version": 1,
+      "title": "Guardrail coverage",
+      "rule": {
+        "kind": "ratio_at_least",
+        "numerator": "guarded_calls",
+        "denominator": "llm_calls",
+        "threshold": 0.995,
+        "attention_band": 0.005
+      },
+      "scope": "production",
+      "basis": "Guardrail decision events per call compared with the traced call count.",
+      "maps_to": [
+        "aiuc-1/B",
+        "aiuc-1/C"
+      ]
+    },
+    {
+      "id": "EO-EVAL-01",
+      "version": 1,
+      "title": "Eval freshness",
+      "rule": {
+        "kind": "freshness_within",
+        "event": "eval_run_pass",
+        "versions_from": "live_versions",
+        "max_age": "P7D",
+        "min_pass_rate": 0.9
+      },
+      "scope": "production",
+      "basis": "An eval run with pass rate at or above 90% exists for every live model and prompt version, run before release and within 7 days.",
+      "maps_to": [
+        "aiuc-1/D",
+        "iso-42001/A.6.2.4"
+      ]
+    },
+    {
+      "id": "EO-INC-01",
+      "version": 1,
+      "title": "Incident register",
+      "rule": {
+        "kind": "zero_count",
+        "metric": "unacknowledged_anomalies"
+      },
+      "scope": "production",
+      "basis": "Error-rate and guardrail-rate anomaly windows matched to incident records acknowledged within 60 minutes.",
+      "maps_to": [
+        "aiuc-1/E",
+        "csa-aicm/SEF",
+        "apra/cps-230"
+      ]
+    },
+    {
+      "id": "EO-AGT-01",
+      "version": 1,
+      "title": "Agent action safety",
+      "rule": {
+        "kind": "max_value",
+        "metric": "tool_error_rate",
+        "threshold": 0.01,
+        "attention_band": 0.002
+      },
+      "scope": "production",
+      "basis": "execute_tool spans inside invoke_agent trees; high-impact tool calls matched to human-approval events.",
+      "maps_to": [
+        "aiuc-1/C",
+        "aiuc-1/D"
+      ]
+    },
+    {
+      "id": "EO-RES-01",
+      "version": 1,
+      "title": "Inference residency",
+      "rule": {
+        "kind": "all_declared",
+        "observed": "regions_observed",
+        "declared": "declared_regions"
+      },
+      "scope": "production",
+      "basis": "Region on every generation span; any region outside the declared list fails.",
+      "maps_to": [
+        "apra/cps-230",
+        "apra-ai-letter/supply-chain",
+        "privacy-act/app-8"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+# Plumbline evidence agent, verifier and SDKs. Requires Go 1.26+; the tests
+# also use Node 22+ and Python 3.10+ with `cryptography` (no other packages).
+SHELL := /bin/bash
+STATICCHECK := honnef.co/go/tools/cmd/staticcheck@2026.2.2
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+VERSION ?= dev
+
+.PHONY: check fmt-check vet staticcheck vuln test vectors sdk-test release-binaries release-sums agent-image agent-dry
+
+check: fmt-check vet staticcheck vuln test vectors sdk-test
+
+fmt-check:
+	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+
+vet:
+	go vet ./...
+	go vet -tags bedrock ./...
+
+staticcheck:
+	go run $(STATICCHECK) ./...
+
+vuln:
+	go run $(GOVULNCHECK) ./...
+	go run $(GOVULNCHECK) -tags bedrock ./...
+
+test:
+	go test -race ./...
+	go test -race -tags bedrock ./internal/usage/...
+
+# Every verifier must agree on every file in spec/vectors/ and spec/jcs-vectors.json.
+vectors:
+	go test -race -run 'Vector|JCS' ./internal/...
+	node --test web/verify/verify.test.js
+	python3 concierge/verify.py spec/vectors/test-public-key.pem spec/vectors/pass/*.dsse.json
+	python3 concierge/verify.py spec/vectors/test-public-key.pem spec/vectors/extra/pass-no-disclosure.dsse.json
+	python3 -m unittest concierge/tests/test_verify_keys.py
+
+sdk-test:
+	python3 -m unittest discover -s sdk/python/tests
+	node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs sdk/js/test/real-libs.test.mjs
+
+# Static binaries: plumbline-verify, plumbline-agent and plumbline-agent-bedrock
+# (with the Bedrock usage poller) for every platform, or for GOOS/GOARCH alone.
+release-binaries:
+	@mkdir -p dist
+	@for p in $(if $(GOOS),$(GOOS)/$(GOARCH),$(PLATFORMS)); do os=$${p%/*}; arch=$${p#*/}; ext=; [ $$os = windows ] && ext=.exe; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/plumbline-verify-$$os-$$arch$$ext ./cmd/verify || exit 1; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/plumbline-agent-$$os-$$arch$$ext ./cmd/agent || exit 1; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -tags bedrock -o dist/plumbline-agent-bedrock-$$os-$$arch$$ext ./cmd/agent || exit 1; \
+	done; ls dist
+
+release-sums:
+	cd dist && sha256sum plumbline-* $$(ls RELEASE-NOTES.md 2>/dev/null) > SHA256SUMS && cat SHA256SUMS
+
+agent-image:
+	docker build -f cmd/agent/Dockerfile --build-arg VERSION=$(VERSION) -t plumbline-agent:$(VERSION) .
+
+agent-dry:
+	PLUMBLINE_SALT_SECRET=$${PLUMBLINE_SALT_SECRET:-dry-run-salt-not-a-secret} go run ./cmd/agent --config agent.example.json --dry-run --replay concierge/testdata/otlp-sample.jsonl

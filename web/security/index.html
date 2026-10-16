@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="What Plumbline sends, what it never sends, how evidence packs are signed and checked, and how to report a vulnerability.">
+<title>Security · Plumbline</title>
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-row">
+    <a class="wordmark" href="../verify/">Plumbline</a>
+    <nav aria-label="Site"><a href="../verify/">Verify a pack</a><a href="../docs/agent/">Agent docs</a><a href="./" aria-current="page">Security</a></nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <h1>How Plumbline handles your data and your evidence</h1>
+  <p class="lede">Plumbline is built so that the people who rely on an evidence pack (a bank, an insurer, an auditor) do not have to trust the vendor or us. This page says what leaves your environment, what never does, how a pack is protected, and where the limits are.</p>
+
+  <nav class="toc panel" aria-label="On this page">
+    <ol>
+      <li><a href="#leaves">What leaves your environment</a></li>
+      <li><a href="#check">How you can check that</a></li>
+      <li><a href="#packs">How a pack is protected</a></li>
+      <li><a href="#agent">The evidence agent</a></li>
+      <li><a href="#service">The Plumbline service</a></li>
+      <li><a href="#providers">Where data is processed</a></li>
+      <li><a href="#limits">What we do not claim</a></li>
+      <li><a href="#report">Reporting a vulnerability</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="leaves">What leaves your environment</h2>
+  <p>Your application's SDK sends spans to the Plumbline evidence agent, which runs on your own infrastructure. In local mode the agent keeps its signed batches on your machine and sends nothing. When it is connected to Plumbline, it sends one signed batch of aggregates per hour. A batch holds only counts and short names:</p>
+  <ul class="sent">
+    <li>Token and call counts per provider, model and region.</li>
+    <li>How many spans carried personal data and how many of those were redacted, as counts.</li>
+    <li>How many model calls had a guardrail decision, and how many were blocked.</li>
+    <li>Evaluation results: suite name, model, prompt version, when it ran and its pass rate.</li>
+    <li>Agent activity counts: runs, tool calls, tool errors, high-impact calls and how many were approved, escalations.</li>
+    <li>Which models and prompt versions were live, when they changed, and any hour with an unusual error or block rate.</li>
+    <li>Provider usage totals, if you turn on the read-only usage pollers.</li>
+    <li>One Merkle root and a leaf count: a commitment to that hour's traces.</li>
+  </ul>
+  <p>It never sends:</p>
+  <ul class="never">
+    <li>Prompts, completions, messages or any span content.</li>
+    <li>Tool or function arguments, return values or exception messages.</li>
+    <li>Raw trace IDs. Each trace is committed as a salted hash, and the salt comes from a secret that stays in your environment.</li>
+    <li>End-user identifiers, IP addresses or request bodies.</li>
+  </ul>
+  <p>The full format is the published batch schema, <code>spec/batch.schema.json</code>, in the open-source repository.</p>
+
+  <h2 id="check">How you can check that</h2>
+  <ul>
+    <li><b>The SDKs never read content.</b> The Python and TypeScript SDKs record provider, model, region, token counts, operation, timing and error status. They never read prompts, completions, arguments or return values, so there is nothing to filter.</li>
+    <li><b>The agent drops content at parse time.</b> If another OpenTelemetry exporter sends message attributes, the agent discards them before anything is aggregated. It only counts how many spans arrived with content.</li>
+    <li><b>Dry run.</b> <code>plumbline-agent --dry-run</code> prints every batch it would send, decoded, and sends nothing. Run it against your own traffic before you connect.</li>
+    <li><b>Open source.</b> The agent, the SDKs and the verifiers are published under the Apache License 2.0, and release binaries carry signed build provenance that ties them to that source.</li>
+    <li><b>One destination.</b> The agent sends batches only to the Plumbline server you configure. The only other outbound calls are the read-only Langfuse and provider usage APIs, and only if you turn them on.</li>
+  </ul>
+
+  <h2 id="packs">How a pack is protected</h2>
+  <ul>
+    <li><b>Signed.</b> A pack is an in-toto statement in a DSSE envelope over canonical JSON (RFC 8785), signed with ECDSA P-256. The signing key is held in AWS KMS in Sydney. The private key never leaves KMS, and the service can only ask KMS to sign.</li>
+    <li><b>Chained.</b> Each pack names the digest of the previous pack for the same system, so a removed, reordered or edited pack breaks the chain.</li>
+    <li><b>Committed to the traces.</b> Each hour's traces are committed as a Merkle tree. Later, you can disclose a single trace and prove it was counted, without revealing any other.</li>
+    <li><b>Published daily.</b> Every pack digest issued each day goes into a signed, chained daily checkpoint in a public Git repository. Anyone can check which day's checkpoint first lists a pack, so a pack issued later cannot pass as an earlier one. <code>plumbline-verify checkpoint</code> proves a pack is in a day's checkpoint.</li>
+    <li><b>Keys with dates.</b> The issuer's public keys are published at <code>/.well-known/jwks.json</code> with the dates each key may sign, and a list of revoked keys. A signature counts only from a key that was valid when the pack was issued and has not been revoked.</li>
+    <li><b>Three verifiers that agree.</b> The command-line verifier, the browser verify page and an independent Python verifier must give the same result on every published test vector. The verify page runs every check in the reviewer's browser.</li>
+  </ul>
+
+  <h2 id="agent">The evidence agent</h2>
+  <ul>
+    <li>Each agent has its own Ed25519 key, generated on your machine at enrolment and stored with mode <code>0600</code> in its data directory. Batches are signed with it, numbered and chained, so a lost or replayed batch is detected.</li>
+    <li>Enrolment uses a one-time token that expires after 24 hours. The server stores only its hash.</li>
+    <li>The span receiver listens on the loopback interface by default and has no authentication. Expose it more widely only on a network you control.</li>
+    <li>Secrets (the salt secret, Langfuse keys, provider admin keys) come only from environment variables or files with mode <code>0600</code>, and are never logged.</li>
+    <li>Batches are written to a local queue and fsynced before they are acknowledged, then retried until the server accepts them.</li>
+    <li>The container image is a static binary on a distroless base, running as a non-root user.</li>
+  </ul>
+
+  <h2 id="service">The Plumbline service</h2>
+  <ul>
+    <li><b>Separation between customers.</b> Every query runs in the signed-in organisation's scope, enforced by Postgres row-level security, not only by application code.</li>
+    <li><b>Evidence is append-only.</b> Database triggers refuse any change to, or deletion of, stored batches, evaluations, packs, checkpoints and verifier views.</li>
+    <li><b>Sign-in</b> is by email magic link through Supabase Auth. The service checks each access token's ES256 signature, issuer, audience and expiry itself. Sessions are HttpOnly, SameSite cookies, and every form submission must come from the app's own origin.</li>
+    <li><b>The web app runs no JavaScript.</b> Its pages forbid scripts and framing through a Content Security Policy.</li>
+    <li><b>Share links.</b> A share-link token is shown once and stored only as a hash. It travels in the URL fragment, which browsers never send to a server. Links expire and can be revoked at once. Verifier addresses are recorded only as a keyed hash that changes daily.</li>
+    <li><b>Integration credentials</b> you give us (Vanta) are encrypted with AES-256-GCM before they are stored, bound to your organisation, and never shown again.</li>
+    <li><b>Logs</b> hold identifiers and digests only, never tokens, keys, credentials or batch contents.</li>
+  </ul>
+
+  <h2 id="providers">Where data is processed</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Provider</th><th>What for</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>Supabase</td><td>Database (batches, packs, organisation data) and sign-in emails</td><td>Sydney, Australia</td></tr>
+      <tr><td>Amazon Web Services</td><td>KMS signing key</td><td>Sydney, Australia (ap-southeast-2)</td></tr>
+      <tr><td>Fly.io</td><td>Runs the Plumbline service</td><td>Sydney, Australia</td></tr>
+      <tr><td>Cloudflare Pages</td><td>Serves this site and the static verify page</td><td>Global edge network</td></tr>
+      <tr><td>GitHub</td><td>Public daily checkpoints and the open-source code</td><td>United States</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted">The checkpoint repository holds pack digests only: no names, no contents. Vanta receives only what you connect it to receive.</p>
+
+  <h2 id="limits">What we do not claim</h2>
+  <ul>
+    <li>A pack shows what your telemetry shows. Calls that never reach the agent are not in it; the coverage objective compares traced tokens with your provider's billed usage to show how much is missing.</li>
+    <li>Plumbline does not yet hold a SOC 2 report or an ISO/IEC 27001 certificate of its own, and has not yet had an independent penetration test. We will list them here when we do.</li>
+    <li>A signature proves the pack came from Plumbline's key and has not changed since. It does not prove the telemetry your systems produced was complete or truthful.</li>
+  </ul>
+
+  <h2 id="report">Reporting a vulnerability</h2>
+  <p>Report it privately through GitHub's private vulnerability reporting on the open-source repository (the Security tab, "Report a vulnerability"). Please do not open a public issue. We acknowledge reports within two working days. The most serious reports are any way to make a tampered, unsigned or wrongly dated pack verify, and any way the agent or an SDK could send content off your machine.</p>
+</main>
+
+<footer class="wrap">Plumbline by Lumetrix. The agent, SDKs and verifiers are open source under the Apache License 2.0.</footer>
+</body>
+</html>

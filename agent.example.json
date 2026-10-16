@@ -1,0 +1,39 @@
+{
+  "server": "https://api.plumbline.example",
+  "data_dir": "./.plumbline-agent",
+  "otlp_listen": "127.0.0.1:4318",
+  "langfuse": {
+    "enabled": false,
+    "base_url": "https://cloud.langfuse.com",
+    "public_key_env": "LANGFUSE_PUBLIC_KEY",
+    "secret_key_env": "LANGFUSE_SECRET_KEY",
+    "eval_scores": []
+  },
+  "usage": {
+    "openai": {
+      "enabled": false,
+      "admin_key_env": "OPENAI_ADMIN_KEY",
+      "project_ids": []
+    },
+    "anthropic": {
+      "enabled": false,
+      "admin_key_env": "ANTHROPIC_ADMIN_KEY",
+      "workspace_ids": []
+    },
+    "bedrock": {
+      "enabled": false,
+      "region": "ap-southeast-2"
+    }
+  },
+  "salt_secret_env": "PLUMBLINE_SALT_SECRET",
+  "salt_secret_file": "",
+  "aggregation": {
+    "grace_minutes": 5,
+    "first_batch_seconds": 60,
+    "anomaly": {
+      "min_calls": 20,
+      "error_rate": 0.05,
+      "guardrail_block_rate": 0.03
+    }
+  }
+}

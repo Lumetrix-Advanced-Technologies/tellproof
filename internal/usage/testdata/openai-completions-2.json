@@ -1,0 +1,4 @@
+{"object": "page", "has_more": false, "next_page": null,
+ "data": [{"object": "bucket", "start_time": 1759316400, "end_time": 1759320000, "results": [
+   {"object": "organization.usage.completions.result", "input_tokens": 80000, "input_cached_tokens": 10000, "output_tokens": 20000, "num_model_requests": 250, "model": "gpt-4o-2024-08-06"}]},
+  {"object": "bucket", "start_time": 1759320000, "end_time": 1759323600, "results": []}]}

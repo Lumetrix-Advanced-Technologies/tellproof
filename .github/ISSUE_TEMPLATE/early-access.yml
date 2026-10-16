@@ -1,0 +1,50 @@
+name: Early access to signed evidence packs
+description: Ask for the hosted Plumbline service, a design partnership, or help as a model vendor or reviewer.
+title: "Early access: "
+labels: ["early-access"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest. **This issue is public**, so please leave out anything confidential. If you would rather talk privately, tick the box at the end and we will contact you through your GitHub account.
+  - type: dropdown
+    id: role
+    attributes:
+      label: Which describes you best?
+      options:
+        - I build an AI-powered app or agent
+        - I am an AI model vendor or inference provider
+        - I review AI vendors (bank, insurer, auditor, risk or procurement team)
+        - Something else
+    validations:
+      required: true
+  - type: checkboxes
+    id: interest
+    attributes:
+      label: What are you interested in?
+      options:
+        - label: "Hosted packs: connect my agent and issue signed evidence packs"
+        - label: "Design partner: shape the evidence objectives with you for a buyer I sell to"
+        - label: "Evidence for models I serve, that my customers can pass on"
+        - label: "Using packs or the verifiers in my review process"
+        - label: Running the evidence service in my own environment
+  - type: input
+    id: buyer
+    attributes:
+      label: Who asks you for evidence? (optional)
+      description: For example "a bank's vendor-risk team" or "insurers". No names needed.
+  - type: input
+    id: stack
+    attributes:
+      label: Models and stack (optional)
+      description: For example "OpenAI and Bedrock from Python", or "our own models behind an OpenAI-compatible API".
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else (optional)
+  - type: checkboxes
+    id: private
+    attributes:
+      label: Contact
+      options:
+        - label: I would rather continue privately; contact me through my GitHub account.

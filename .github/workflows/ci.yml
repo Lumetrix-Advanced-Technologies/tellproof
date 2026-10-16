@@ -1,0 +1,44 @@
+name: ci
+on: [push, pull_request]
+permissions: { contents: read }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.27" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install cryptography
+      - run: make check
+      - run: make release-binaries VERSION=ci && make release-sums
+
+  sdk-python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { python: ["3.10", "3.13"] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - run: python -m unittest discover -s sdk/python/tests -v
+
+  sdk-js:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { node: ["18", "24"] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}" }
+      - run: node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs
+
+  agent-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f cmd/agent/Dockerfile --build-arg VERSION=ci -t plumbline-agent:ci .
+      - run: docker run --rm plumbline-agent:ci version | grep -q "plumbline-agent ci"

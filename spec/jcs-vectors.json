@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "note": "RFC 8785 cases. 'expected' is the exact canonical UTF-8 text. Go's encoding/json fails several of these (it escapes <>& and U+2028/2029, and formats floats differently); internal/jcs must pass all.",
+  "cases": [
+    {
+      "name": "key-order-nested",
+      "input": "{\"b\":2,\"a\":1,\"c\":{\"z\":0,\"y\":[3,{\"k\":1,\"j\":2}]}}",
+      "expected": "{\"a\":1,\"b\":2,\"c\":{\"y\":[3,{\"j\":2,\"k\":1}],\"z\":0}}"
+    },
+    {
+      "name": "key-order-utf16-not-codepoint",
+      "input": "{\"\\uff61\":1,\"\\ud83d\\ude00\":2,\"a\":0}",
+      "expected": "{\"a\":0,\"😀\":2,\"｡\":1}"
+    },
+    {
+      "name": "numbers-integral-floats",
+      "input": "[100.0, -0.0, 1.50, 2e0, 1E2]",
+      "expected": "[100,0,1.5,2,100]"
+    },
+    {
+      "name": "numbers-exponent-thresholds",
+      "input": "[0.000001, 1e-7, 1e20, 1e21, 123456789012345680000, 1e6]",
+      "expected": "[0.000001,1e-7,100000000000000000000,1e+21,123456789012345680000,1000000]"
+    },
+    {
+      "name": "numbers-extremes",
+      "input": "[5e-324, 1.7976931348623157e308, 0.1, 0.30000000000000004, -1.5e-10]",
+      "expected": "[5e-324,1.7976931348623157e+308,0.1,0.30000000000000004,-1.5e-10]"
+    },
+    {
+      "name": "string-escapes",
+      "input": "[\"\\u0000\\u001f\\b\\t\\n\\f\\r\\\"\\\\\", \"<>&\", \"\\u2028\\u2029\", \"\\u00e9\\u20ac\\ud83d\\ude00\", \"\\/\"]",
+      "expected": "[\"\\u0000\\u001f\\b\\t\\n\\f\\r\\\"\\\\\",\"<>&\",\"  \",\"é€😀\",\"/\"]"
+    },
+    {
+      "name": "whitespace-removed",
+      "input": "{ \"a\" : [ 1 , 2 ] ,\n \"b\" : { } , \"c\" : [ ] }",
+      "expected": "{\"a\":[1,2],\"b\":{},\"c\":[]}"
+    },
+    {
+      "name": "literals",
+      "input": "[true,false,null,\"\",0]",
+      "expected": "[true,false,null,\"\",0]"
+    }
+  ],
+  "must_reject": [
+    {
+      "name": "duplicate-keys",
+      "input": "{\"a\":1,\"a\":2}",
+      "why": "I-JSON forbids duplicate names"
+    },
+    {
+      "name": "lone-surrogate",
+      "input": "[\"\\ud800\"]",
+      "why": "I-JSON requires valid Unicode"
+    },
+    {
+      "name": "nan-literal",
+      "input": "[NaN]",
+      "why": "not JSON"
+    }
+  ]
+}

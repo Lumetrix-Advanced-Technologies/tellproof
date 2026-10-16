@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https: http://localhost:8080 http://127.0.0.1:8080; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<!-- Base URL of the Plumbline API for share links; empty means this page's origin. Set at deploy. -->
+<meta name="plumbline-api" content="">
+<title>Verify a Plumbline pack</title>
+<link rel="stylesheet" href="../brand.css">
+<link rel="stylesheet" href="verify.css">
+<script type="module" src="page.js"></script>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap masthead-row">
+    <span class="wordmark">Plumbline <span class="muted">verify</span></span>
+    <span class="muted small">Checks run in your browser. Nothing you load here is sent anywhere.</span>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <noscript>
+    <p class="notice">This page needs JavaScript to run the checks. You can verify a pack without a browser using <code>plumbline-verify</code>.</p>
+  </noscript>
+
+  <section id="loading" class="panel" hidden>
+    <p><span class="stamp-inline" aria-hidden="true">…</span> Loading the pack</p>
+  </section>
+
+  <section id="load-error" class="panel notice-fail" role="alert" hidden>
+    <h1 class="h2" id="load-error-title"></h1>
+    <p id="load-error-text"></p>
+  </section>
+
+  <section id="offline" class="panel" hidden>
+    <h1 class="h2">Check a pack from files</h1>
+    <p class="muted">Choose the issuer's public keys and one or more pack files. Packs are checked in order of their sequence number, each against the one before it. No network is used.</p>
+    <form id="offline-form" class="offline-form">
+      <div class="field">
+        <label for="jwks-file">Issuer keys (JWKS file)</label>
+        <input type="file" id="jwks-file" accept=".json,application/json" required>
+      </div>
+      <div class="field">
+        <label for="pack-files">Pack files</label>
+        <input type="file" id="pack-files" accept=".json,application/json" multiple required>
+      </div>
+      <div><button type="submit" class="primary">Check packs</button></div>
+    </form>
+  </section>
+
+  <div id="report" hidden>
+    <nav class="chain" id="chain" aria-label="Packs checked"></nav>
+
+    <header class="top">
+      <div class="ident" id="ident"></div>
+      <aside class="seal wait" id="seal" aria-live="polite">
+        <div class="seal-head">
+          <span class="stamp" id="stamp" aria-hidden="true">…</span>
+          <div>
+            <h1 class="seal-title" id="seal-title">Checking this pack</h1>
+            <p class="muted small" id="seal-sub"></p>
+          </div>
+        </div>
+        <ul class="checks" id="checks"></ul>
+        <div class="seal-actions noprint">
+          <button type="button" id="btn-print">Print or save as PDF</button>
+        </div>
+      </aside>
+    </header>
+
+    <div id="content"></div>
+
+    <section class="raw">
+      <h2>Raw signed pack</h2>
+      <p class="muted">A DSSE envelope holding an in-toto Statement, signed with ECDSA P-256 over the DSSE pre-authentication encoding.</p>
+      <details id="raw-statement-box" hidden>
+        <summary>Decoded statement (JSON)</summary>
+        <pre id="raw-statement"></pre>
+      </details>
+      <details>
+        <summary>Envelope as delivered</summary>
+        <pre id="raw-envelope"></pre>
+      </details>
+      <details>
+        <summary>Issuer public keys (JWKS)</summary>
+        <pre id="raw-jwks"></pre>
+      </details>
+      <p class="label">Verify without a browser</p>
+      <pre class="cmd" id="cmd"></pre>
+    </section>
+  </div>
+</main>
+
+<footer class="wrap site-footer">
+  <p>Format: assurance-pack v0.1 · RFC 8785 canonical JSON · in-toto Statement v1 · DSSE · ECDSA P-256 / SHA-256.</p>
+  <p>A pack shows what the vendor's telemetry shows for one period. Read "What this pack does not prove" before relying on it.</p>
+</footer>
+
+<div class="print-footer" id="print-footer" aria-hidden="true"></div>
+</body>
+</html>

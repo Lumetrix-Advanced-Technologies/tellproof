@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumetrix.example/plumbline/schema/batch-v0.1.json",
+  "title": "Plumbline agent batch payload v0.1",
+  "type": "object",
+  "required": [
+    "schema",
+    "agent_id",
+    "seq",
+    "prev",
+    "window",
+    "semconv_map",
+    "metrics",
+    "usage",
+    "commit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "plumbline-batch/v0.1"
+    },
+    "agent_id": {
+      "type": "string",
+      "pattern": "^agt_[A-Za-z0-9]{8,40}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "prev": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "semconv_map": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "tokens",
+        "content_present_spans"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "provider",
+              "model",
+              "region",
+              "input_tokens",
+              "output_tokens",
+              "calls"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "input_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "output_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "calls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "pii": {
+          "type": "object",
+          "properties": {
+            "pii_spans": {
+              "type": "integer"
+            },
+            "pii_spans_redacted": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "content_present_spans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guardrails": {
+          "type": "object",
+          "properties": {
+            "llm_calls": {
+              "type": "integer"
+            },
+            "guarded_calls": {
+              "type": "integer"
+            },
+            "blocked": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "evals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "suite",
+              "model",
+              "prompt_version",
+              "ran_at",
+              "pass_rate"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "suite": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "prompt_version": {
+                "type": "string"
+              },
+              "ran_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "pass_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "runs": {
+              "type": "integer"
+            },
+            "tool_calls": {
+              "type": "integer"
+            },
+            "tool_errors": {
+              "type": "integer"
+            },
+            "high_impact_calls": {
+              "type": "integer"
+            },
+            "high_impact_approved": {
+              "type": "integer"
+            },
+            "escalations": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "at",
+              "kind",
+              "from",
+              "to"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "enum": [
+                  "model",
+                  "prompt"
+                ]
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "anomalies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "start",
+              "end",
+              "kind"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "enum": [
+                  "error_rate",
+                  "guardrail_rate"
+                ]
+              }
+            }
+          }
+        },
+        "late_spans": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "usage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requests": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "required": [
+        "root",
+        "leaves"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "leaves": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,457 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumetrix.example/plumbline/schema/pack-predicate-v0.1.json",
+  "title": "Plumbline pack predicate v0.1",
+  "type": "object",
+  "required": [
+    "pack_schema",
+    "pack_id",
+    "seq_no",
+    "prev_pack_digest",
+    "issued_at",
+    "period",
+    "subject",
+    "profiles",
+    "assurance_level",
+    "sources",
+    "coverage",
+    "lineage",
+    "changes",
+    "incidents",
+    "objectives",
+    "commitments",
+    "limitations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "pack_schema": {
+      "const": "assurance-pack/v0.1"
+    },
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9-]{3,64}$"
+    },
+    "seq_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "prev_pack_digest": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "period": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "timezone"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "format": "date"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      }
+    },
+    "sample_notice": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "organisation",
+        "ai_system",
+        "environment"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "organisation": {
+          "type": "string"
+        },
+        "ai_system": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assurance_level": {
+      "type": "object",
+      "required": [
+        "level",
+        "meaning"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "meaning": {
+          "type": "string"
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "system",
+          "method"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "traces",
+              "provider_usage",
+              "registers"
+            ]
+          },
+          "system": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "basis",
+        "total_pct",
+        "providers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "const": "tokens"
+        },
+        "total_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "provider",
+              "region",
+              "billed_tokens",
+              "traced_tokens"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "billed_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "traced_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "billed_requests": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "traced_requests": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "lineage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "role",
+          "region"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "share_of_calls_pct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "date",
+          "kind",
+          "what"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "kind": {
+            "enum": [
+              "model",
+              "prompt",
+              "guardrail",
+              "config",
+              "provider"
+            ]
+          },
+          "what": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "opened",
+          "summary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "opened": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "acknowledged": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "objectives": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "threshold",
+          "measured",
+          "basis",
+          "maps"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^EO-[A-Z]+-[0-9]{2}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "attention",
+              "fail"
+            ]
+          },
+          "threshold": {
+            "type": "string"
+          },
+          "measured": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "maps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "commitments": {
+      "type": "object",
+      "required": [
+        "trace_merkle_root",
+        "leaf_count",
+        "leaf",
+        "node",
+        "disclosed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "trace_merkle_root": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "leaf_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "leaf": {
+          "type": "string"
+        },
+        "node": {
+          "type": "string"
+        },
+        "disclosed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "trace_id",
+                "leaf_index",
+                "salt",
+                "proof"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "trace_id": {
+                  "type": "string"
+                },
+                "leaf_index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "salt": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{32}$"
+                },
+                "proof": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "side",
+                      "hash"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "side": {
+                        "enum": [
+                          "L",
+                          "R"
+                        ]
+                      },
+                      "hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "objective_set_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "batch_digests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$"
+      }
+    }
+  }
+}

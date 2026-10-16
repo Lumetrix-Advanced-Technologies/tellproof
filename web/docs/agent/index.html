@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Install, connect and configure the Plumbline evidence agent and the one-line SDKs.">
+<title>Evidence agent · Plumbline docs</title>
+<link rel="stylesheet" href="../../brand.css">
+<link rel="stylesheet" href="../../site.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-row">
+    <a class="wordmark" href="../../verify/">Plumbline</a>
+    <nav aria-label="Site"><a href="../../verify/">Verify a pack</a><a href="./" aria-current="page">Agent docs</a><a href="../../security/">Security</a></nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <h1>The evidence agent</h1>
+  <p class="lede">The agent runs next to your AI product. It receives spans from the Plumbline SDK (or any OpenTelemetry exporter), drops all message content, and sends Plumbline one signed batch of aggregates per hour. It is open source, and <code>--dry-run</code> shows exactly what it would send.</p>
+
+  <nav class="toc panel" aria-label="On this page">
+    <ol>
+      <li><a href="#local">Try it locally</a></li>
+      <li><a href="#quick">Connect to Plumbline</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#app">Instrument your app</a></li>
+      <li><a href="#dry">See what would be sent</a></li>
+      <li><a href="#config">Configuration</a></li>
+      <li><a href="#sources">More evidence sources</a></li>
+      <li><a href="#data">The data directory</a></li>
+      <li><a href="#network">Networking</a></li>
+      <li><a href="#trouble">Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="local">Try it locally</h2>
+  <p>Local mode needs no account, no server and no token. The agent signs each hourly batch with a key of its own and keeps it in its data directory; nothing is sent anywhere.</p>
+<pre><code>docker run -d --name plumbline-agent --restart unless-stopped -p 127.0.0.1:4318:4318 \
+  -v plumbline-agent:/data ghcr.io/lumetrix-advanced-technologies/plumbline-agent:latest local</code></pre>
+  <p>Add the SDK to your app (<a href="#app">below</a>), make a model call, and about a minute later read the log:</p>
+<pre><code>docker exec plumbline-agent /plumbline-agent report
+docker exec plumbline-agent /plumbline-agent report --json --since 2026-10-01</code></pre>
+  <p><code>report</code> checks every batch's signature against <code>agent.pub</code> and the chain from the first batch, then sums the calls per model and region, guardrail decisions, personal-data redaction, agent activity, prompt and model changes and anomalies. It exits 1 if a batch was edited or is missing. Keep a copy of <code>agent.pub</code> elsewhere: the log proves it has not changed relative to that key.</p>
+  <p>For packs evaluated against Plumbline's evidence objectives and signed by an independent issuer, which a reviewer can verify, <a href="https://github.com/lumetrix-advanced-technologies/plumbline/issues/new?template=early-access.yml">request early access</a> to the hosted service. Connecting starts a new agent with its own data directory; the local log stays local.</p>
+
+  <h2 id="quick">Connect to Plumbline</h2>
+  <ol>
+    <li>In the Plumbline app, open your AI system's <b>Setup and sources</b> page and choose <b>Create enrolment token</b>. The page shows the command below with the token and server filled in. The token works once, for 24 hours.</li>
+    <li>Run the agent with it, then add one line to your app.</li>
+  </ol>
+<pre><code>docker run -d --name plumbline-agent --restart unless-stopped -p 127.0.0.1:4318:4318 \
+  -v plumbline-agent:/data -e PLUMBLINE_SERVER=https://&lt;server&gt; \
+  ghcr.io/lumetrix-advanced-technologies/plumbline-agent:latest connect &lt;token&gt;</code></pre>
+  <p><code>connect</code> enrols the agent if its data directory is not enrolled yet, then runs. Running the same command again, for example after a restart, does not enrol again. About a minute after your app's first model call, the system page lists the agent and its first batch.</p>
+
+  <h2 id="install">Install</h2>
+  <h3>Container</h3>
+  <p>The image <code>ghcr.io/lumetrix-advanced-technologies/plumbline-agent</code> is a static binary on a distroless base, for linux/amd64 and linux/arm64, running as a non-root user. Keep the <code>/data</code> volume (see <a href="#data">the data directory</a>).</p>
+  <h3>Binary</h3>
+  <p>Release binaries for Linux, macOS and Windows on amd64 and arm64 are on the open-source repository's Releases page. Check a download before you run it:</p>
+<pre><code>sha256sum --ignore-missing -c SHA256SUMS
+gh attestation verify plumbline-agent-linux-amd64 --repo lumetrix-advanced-technologies/plumbline</code></pre>
+<pre><code>PLUMBLINE_SERVER=https://&lt;server&gt; ./plumbline-agent-linux-amd64 connect &lt;token&gt;</code></pre>
+  <p>Use a <code>plumbline-agent-bedrock-*</code> binary if you need Amazon Bedrock usage from CloudWatch.</p>
+  <h3>From source</h3>
+<pre><code>go install github.com/lumetrix-advanced-technologies/plumbline/cmd/agent@latest</code></pre>
+
+  <h2 id="app">Instrument your app</h2>
+  <p>Install the SDK (<code>pip install plumbline-sdk</code> or <code>npm install plumbline-sdk</code>) and add one line at start-up:</p>
+<pre><code>import plumbline; plumbline.init()                              # Python 3.10+
+import * as plumbline from 'plumbline-sdk'; plumbline.init();   // Node.js 18+</code></pre>
+  <p>The SDK instruments the OpenAI, Anthropic and Bedrock client libraries that are installed. It records one span per model call (provider, model, region, token counts, operation, timing and error status) and never reads prompts, completions, arguments or return values. It has no dependencies, and it never blocks or breaks your app: if the agent is down, spans are dropped and counted.</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Environment variable</th><th>Default</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>PLUMBLINE_AGENT_URL</code></td><td><code>http://127.0.0.1:4318</code></td><td>Where the agent listens.</td></tr>
+      <tr><td><code>PLUMBLINE_SERVICE</code></td><td><code>OTEL_SERVICE_NAME</code></td><td>The service name on every span.</td></tr>
+      <tr><td><code>PLUMBLINE_ENVIRONMENT</code></td><td>none</td><td>The deployment environment, such as <code>production</code>.</td></tr>
+      <tr><td><code>PLUMBLINE_DISABLED</code></td><td>unset</td><td><code>1</code> turns the SDK off.</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Serving your own models?</b> There is no client library to patch: wrap each inference request in your serving layer with <code>plumbline.llm_call("your-company", model, region=...)</code> (Node.js: <code>plumbline.llmCall({provider, model, region}, fn)</code>) and report the tokens with <code>c.usage(input, output)</code>.</p>
+  <p>Without the SDK, point an OTLP/HTTP JSON exporter at <code>http://127.0.0.1:4318/v1/traces</code> and set the <code>plumbline.*</code> attributes yourself, as listed in <code>spec/semconv-map.json</code>. Do not use both for the same calls, or they are counted twice.</p>
+
+  <h2 id="dry">See what would be sent</h2>
+  <p>Dry run prints every batch the agent would send, with its payload decoded, and sends, queues and stores nothing. Replay feeds an OTLP JSON export through the same pipeline and exits:</p>
+<pre><code>plumbline-agent run --config agent.json --dry-run
+plumbline-agent run --config agent.json --dry-run --replay export.jsonl</code></pre>
+  <p>A batch holds counts and short names only: tokens and calls per provider, model and region, counts of spans with personal data and how many were redacted, guardrail and evaluation results, agent activity counts, which models and prompt versions were live, and one Merkle root over the hour's traces. The full format is <code>spec/batch.schema.json</code>.</p>
+
+  <h2 id="config">Configuration</h2>
+  <p><code>connect</code> needs no file. For anything more, write a JSON file and pass <code>--config agent.json</code>. These environment variables override it:</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Environment variable</th><th>Config key</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td><code>PLUMBLINE_SERVER</code></td><td><code>server</code></td><td>none (required)</td></tr>
+      <tr><td><code>PLUMBLINE_DATA_DIR</code></td><td><code>data_dir</code></td><td><code>./.plumbline-agent</code> (<code>/data</code> in the container)</td></tr>
+      <tr><td><code>PLUMBLINE_OTLP_LISTEN</code></td><td><code>otlp_listen</code></td><td><code>127.0.0.1:4318</code></td></tr>
+      <tr><td><code>PLUMBLINE_OTLP_ALLOW_REMOTE=1</code></td><td><code>otlp_allow_remote</code></td><td>off: only loopback addresses may be used</td></tr>
+      <tr><td><code>PLUMBLINE_ENROL_TOKEN</code></td><td></td><td>The token for <code>plumbline-agent enrol</code> when <code>--token</code> is not given.</td></tr>
+      <tr><td><code>PLUMBLINE_SALT_SECRET</code></td><td><code>salt_secret_env</code> names the variable</td><td>With <code>connect</code>, a random secret kept in the data directory.</td></tr>
+    </tbody>
+  </table></div>
+  <p>A complete file, with every source off:</p>
+<pre><code>{
+  "server": "https://&lt;server&gt;",
+  "data_dir": "./.plumbline-agent",
+  "otlp_listen": "127.0.0.1:4318",
+  "langfuse": { "enabled": false, "base_url": "https://cloud.langfuse.com",
+                "public_key_env": "LANGFUSE_PUBLIC_KEY", "secret_key_env": "LANGFUSE_SECRET_KEY", "eval_scores": [] },
+  "usage": {
+    "openai":    { "enabled": false, "admin_key_env": "OPENAI_ADMIN_KEY", "project_ids": [] },
+    "anthropic": { "enabled": false, "admin_key_env": "ANTHROPIC_ADMIN_KEY", "workspace_ids": [] },
+    "bedrock":   { "enabled": false, "region": "ap-southeast-2" }
+  },
+  "salt_secret_env": "PLUMBLINE_SALT_SECRET",
+  "salt_secret_file": "",
+  "aggregation": { "grace_minutes": 5, "first_batch_seconds": 60,
+                   "anomaly": { "min_calls": 20, "error_rate": 0.05, "guardrail_block_rate": 0.03 } }
+}</code></pre>
+  <p>Secrets are never written in the file. The file names the environment variable that holds each one (<code>*_env</code>), or a file with mode <code>0600</code> for the salt secret.</p>
+  <ul>
+    <li><code>aggregation.grace_minutes</code>: how long after the hour a window stays open for late spans. Later spans are counted in the next window as late.</li>
+    <li><code>aggregation.first_batch_seconds</code>: after a start, the open hour is sent once this long after the first spans, so a new agent shows up at once. The rest of the hour follows when it closes.</li>
+    <li><code>aggregation.anomaly</code>: an hour with at least <code>min_calls</code> calls and an error or guardrail-block rate above these is reported as an anomaly window.</li>
+  </ul>
+
+  <h2 id="sources">More evidence sources</h2>
+  <p>Each source is read-only and off until you turn it on.</p>
+  <ul>
+    <li><b>Langfuse</b> (<code>langfuse</code>): pulls traces from Langfuse with your project keys, dropping content the same way. <code>eval_scores</code> maps a Langfuse score to an evaluation suite: <code>{"name": "faithfulness", "suite": "rag-eval", "pass_at_least": 0.8}</code>.</li>
+    <li><b>OpenAI and Anthropic usage</b> (<code>usage.openai</code>, <code>usage.anthropic</code>): polls the providers' usage APIs with an admin key, so a pack can compare traced tokens with billed tokens (the coverage objective). Limit it to the projects or workspaces of this system.</li>
+    <li><b>Amazon Bedrock usage</b> (<code>usage.bedrock</code>): reads Bedrock's CloudWatch metrics in <code>region</code> with the default AWS credential chain. Needs a <code>-bedrock</code> build.</li>
+  </ul>
+
+  <h2 id="data">The data directory</h2>
+  <p>Keep it, and back it up. It holds:</p>
+  <ul>
+    <li>the agent's Ed25519 private key (mode <code>0600</code>), which signs every batch; losing it means enrolling a new agent;</li>
+    <li>the queue of batches not yet accepted by the server, fsynced before they are acknowledged and retried with backoff of up to 15 minutes;</li>
+    <li>each window's commitment leaves and, with <code>connect</code>, <code>salt.secret</code>. Together they let you later disclose one trace to a reviewer and prove it was counted, without revealing any other.</li>
+  </ul>
+
+  <h2 id="network">Networking</h2>
+  <ul>
+    <li><b>Inbound:</b> only the span receiver, on <code>127.0.0.1:4318</code> by default. It has no authentication. Inside the container it listens on all interfaces, and the documented command publishes it on the host's loopback only. If your app runs on other hosts (for example other pods), allow remote addresses and restrict who can reach the port with a network policy or firewall.</li>
+    <li><b>Outbound:</b> the Plumbline server you configure, over HTTPS. If you turn them on, also the Langfuse API and the providers' usage APIs.</li>
+  </ul>
+
+  <h2 id="trouble">Troubleshooting</h2>
+  <ul>
+    <li><b>No agent on the system page:</b> check the agent's log for an enrolment error. An expired or used token needs a new one from the app. The same <code>connect</code> line works again once the data directory is enrolled.</li>
+    <li><b>Agent listed, no batches:</b> check that your app reaches <code>PLUMBLINE_AGENT_URL</code>, and run <code>--dry-run</code> to see what the agent is building.</li>
+    <li><b>Counts doubled:</b> the SDK and another OpenTelemetry exporter are both sending the same calls to the agent. Use one.</li>
+    <li><b>Exit status:</b> 0 ok, 1 runtime error, 2 usage or configuration error. <code>plumbline-agent version</code> prints the version.</li>
+  </ul>
+</main>
+
+<footer class="wrap">Plumbline by Lumetrix. The agent and SDKs are open source under the Apache License 2.0. See also <a href="../../security/">Security</a>.</footer>
+</body>
+</html>

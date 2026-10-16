@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "jwks": "test-jwks.json",
+  "public_key_pem": "test-public-key.pem",
+  "chain_rule": "chain is null when prev is null; otherwise predicate.prev_pack_digest must equal 'sha256:' + hex(sha256(base64decode(prev.payload)))",
+  "cases": [
+    {
+      "name": "pass-0001",
+      "file": "pass/KST-CTA-0001.dsse.json",
+      "prev": null,
+      "expect": {
+        "signature": true,
+        "subject_digest": true,
+        "chain": null,
+        "merkle": true,
+        "verified": true
+      }
+    },
+    {
+      "name": "pass-0002",
+      "file": "pass/KST-CTA-0002.dsse.json",
+      "prev": "pass/KST-CTA-0001.dsse.json",
+      "expect": {
+        "signature": true,
+        "subject_digest": true,
+        "chain": true,
+        "merkle": true,
+        "verified": true
+      }
+    },
+    {
+      "name": "pass-0003",
+      "file": "pass/KST-CTA-0003.dsse.json",
+      "prev": "pass/KST-CTA-0002.dsse.json",
+      "expect": {
+        "signature": true,
+        "subject_digest": true,
+        "chain": true,
+        "merkle": true,
+        "verified": true
+      }
+    },
+    {
+      "name": "tampered-payload",
+      "file": "fail/tampered-payload.dsse.json",
+      "prev": "pass/KST-CTA-0002.dsse.json",
+      "expect": {
+        "signature": false,
+        "subject_digest": false,
+        "chain": true,
+        "merkle": true,
+        "verified": false
+      }
+    },
+    {
+      "name": "wrong-key",
+      "file": "fail/wrong-key.dsse.json",
+      "prev": null,
+      "expect": {
+        "signature": false,
+        "subject_digest": true,
+        "chain": null,
+        "merkle": true,
+        "verified": false
+      }
+    },
+    {
+      "name": "broken-chain",
+      "file": "fail/broken-chain-0002.dsse.json",
+      "prev": "pass/KST-CTA-0001.dsse.json",
+      "expect": {
+        "signature": true,
+        "subject_digest": true,
+        "chain": false,
+        "merkle": true,
+        "verified": false
+      }
+    },
+    {
+      "name": "bad-merkle-proof",
+      "file": "fail/bad-merkle-proof.dsse.json",
+      "prev": null,
+      "expect": {
+        "signature": true,
+        "subject_digest": true,
+        "chain": null,
+        "merkle": false,
+        "verified": false
+      }
+    },
+    {
+      "name": "subject-digest-mismatch",
+      "file": "fail/subject-digest-mismatch.dsse.json",
+      "prev": null,
+      "expect": {
+        "signature": true,
+        "subject_digest": false,
+        "chain": null,
+        "merkle": true,
+        "verified": false
+      }
+    }
+  ]
+}

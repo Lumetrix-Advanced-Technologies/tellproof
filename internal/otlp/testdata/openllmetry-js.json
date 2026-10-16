@@ -1,0 +1,109 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "support-bot"}},
+          {"key": "cloud.region", "value": {"stringValue": "ap-southeast-2"}}
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {"name": "@traceloop/instrumentation-openai", "version": "0.11.0"},
+          "spans": [
+            {
+              "traceId": "5B8EFFF798038103D269B633813FC60C",
+              "spanId": "EEE19B7EC3C1B174",
+              "name": "openai.chat",
+              "kind": 3,
+              "startTimeUnixNano": 1760500000000000000,
+              "endTimeUnixNano": 1760500001200000000,
+              "attributes": [
+                {"key": "llm.request.type", "value": {"stringValue": "chat"}},
+                {"key": "gen_ai.system", "value": {"stringValue": "openai"}},
+                {"key": "gen_ai.request.model", "value": {"stringValue": "gpt-4o"}},
+                {"key": "gen_ai.response.model", "value": {"stringValue": "gpt-4o-2024-08-06"}},
+                {"key": "gen_ai.usage.prompt_tokens", "value": {"intValue": 812}},
+                {"key": "gen_ai.usage.completion_tokens", "value": {"intValue": 96}},
+                {"key": "gen_ai.prompt.0.role", "value": {"stringValue": "user"}},
+                {"key": "gen_ai.prompt.0.content", "value": {"stringValue": "SECRET: refund for the card ending 4421, Jane Citizen"}},
+                {"key": "gen_ai.completion.0.content", "value": {"stringValue": "SECRET reply: your refund is approved"}},
+                {"key": "plumbline.prompt.name", "value": {"stringValue": "refunds"}},
+                {"key": "plumbline.prompt.version", "value": {"stringValue": "7"}},
+                {"key": "plumbline.guardrail.decision", "value": {"stringValue": "allow"}},
+                {"key": "plumbline.data_class", "value": {"stringValue": "personal"}},
+                {"key": "plumbline.redaction.applied", "value": {"boolValue": true}}
+              ],
+              "status": {"code": "STATUS_CODE_UNSET"}
+            },
+            {
+              "traceId": "5B8EFFF798038103D269B633813FC60C",
+              "spanId": "EEE19B7EC3C1B175",
+              "name": "refund.issue",
+              "startTimeUnixNano": "1760500001300000000",
+              "attributes": [
+                {"key": "gen_ai.operation.name", "value": {"stringValue": "execute_tool"}},
+                {"key": "gen_ai.tool.name", "value": {"stringValue": "issue_refund"}},
+                {"key": "plumbline.tool.high_impact", "value": {"boolValue": true}},
+                {"key": "plumbline.tool.approved", "value": {"boolValue": false}}
+              ],
+              "status": {"code": "STATUS_CODE_ERROR", "message": "SECRET downstream said: card 4421 blocked"}
+            },
+            {
+              "traceId": "0af7651916cd43dd8448eb211c80319c",
+              "spanId": "b7ad6b7169203331",
+              "name": "openai.embeddings",
+              "startTimeUnixNano": 1760500002000000000,
+              "attributes": [
+                {"key": "llm.request.type", "value": {"stringValue": "embedding"}},
+                {"key": "gen_ai.system", "value": {"stringValue": "openai"}},
+                {"key": "gen_ai.request.model", "value": {"stringValue": "text-embedding-3-small"}},
+                {"key": "gen_ai.usage.prompt_tokens", "value": {"intValue": "40"}},
+                {"key": "llm.prompts.0.content", "value": {"stringValue": "SECRET policy text to embed"}}
+              ],
+              "status": {}
+            }
+          ]
+        },
+        {
+          "scope": {"name": "@traceloop/instrumentation-anthropic"},
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b7",
+              "name": "anthropic.chat",
+              "startTimeUnixNano": "1760503600000000000",
+              "attributes": [
+                {"key": "gen_ai.operation.name", "value": {"stringValue": "chat"}},
+                {"key": "gen_ai.provider.name", "value": {"stringValue": "anthropic"}},
+                {"key": "gen_ai.request.model", "value": {"stringValue": "claude-sonnet-4-5"}},
+                {"key": "gen_ai.usage.input_tokens", "value": {"doubleValue": 1500}},
+                {"key": "gen_ai.usage.output_tokens", "value": {"intValue": "200"}},
+                {"key": "gen_ai.agent.name", "value": {"stringValue": "triage"}},
+                {"key": "plumbline.escalation", "value": {"stringValue": "true"}},
+                {"key": "gen_ai.input.messages", "value": {"arrayValue": {"values": [{"stringValue": "SECRET array message"}]}}}
+              ],
+              "events": [
+                {"name": "gen_ai.content.completion", "attributes": [{"key": "gen_ai.completion", "value": {"stringValue": "SECRET event text"}}]}
+              ],
+              "status": {"code": 2}
+            },
+            {
+              "traceId": "not-a-trace-id",
+              "spanId": "00f067aa0ba902b8",
+              "name": "SECRET bad span",
+              "startTimeUnixNano": "1760503600000000000",
+              "attributes": []
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4737",
+              "spanId": "00f067aa0ba902b9",
+              "name": "no start time",
+              "attributes": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

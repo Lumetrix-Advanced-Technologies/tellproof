@@ -1,0 +1,28 @@
+{
+  "keys": [
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "kid": "test-p256-2026-10",
+      "use": "sig",
+      "alg": "ES256",
+      "x": "19PL3tWYOlQq5YwaFlplvZmNT45RiGERIv0sZz8uzo4",
+      "y": "KjLsfFbqYn6OHELPVMQHn3eTeTqo-xcxMwNxYxLpM_w"
+    },
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "kid": "test-p256-2027-01",
+      "use": "sig",
+      "alg": "ES256",
+      "x": "hUXY_tfUpTzsGs1AfZh9hiAoRM6TlYFe7L3bppmbOVA",
+      "y": "1e5QxwizG0yDnxoYTyifSkaRNhmyUM54Wyh6vbBUv40"
+    }
+  ],
+  "revoked": [
+    {
+      "kid": "test-p256-2027-01",
+      "revoked_at": 1786489200
+    }
+  ]
+}

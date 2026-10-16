@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "note": "IDs and our own short titles only. Never store licensed control text. verified=false renders with an asterisk.",
+  "refs": [
+    {
+      "id": "eu-ai-act/art-12",
+      "framework": "EU AI Act",
+      "ref": "Art. 12",
+      "title": "Record-keeping (automatic logging)",
+      "verified": true
+    },
+    {
+      "id": "eu-ai-act/art-26-6",
+      "framework": "EU AI Act",
+      "ref": "Art. 26(6)",
+      "title": "Deployers keep logs",
+      "verified": true
+    },
+    {
+      "id": "eu-ai-act/art-72",
+      "framework": "EU AI Act",
+      "ref": "Art. 72",
+      "title": "Post-market monitoring",
+      "verified": true
+    },
+    {
+      "id": "iso-42001/A.6.2.4",
+      "framework": "ISO/IEC 42001",
+      "ref": "A.6.2.4",
+      "title": "AI system verification and validation",
+      "verified": false
+    },
+    {
+      "id": "iso-42001/A.6.2.6",
+      "framework": "ISO/IEC 42001",
+      "ref": "A.6.2.6",
+      "title": "AI system operation and monitoring",
+      "verified": false
+    },
+    {
+      "id": "iso-42001/A.6.2.8",
+      "framework": "ISO/IEC 42001",
+      "ref": "A.6.2.8",
+      "title": "AI system event logs",
+      "verified": false
+    },
+    {
+      "id": "aiuc-1/A",
+      "framework": "AIUC-1",
+      "ref": "A",
+      "title": "Data and privacy",
+      "verified": false
+    },
+    {
+      "id": "aiuc-1/B",
+      "framework": "AIUC-1",
+      "ref": "B",
+      "title": "Security",
+      "verified": false
+    },
+    {
+      "id": "aiuc-1/C",
+      "framework": "AIUC-1",
+      "ref": "C",
+      "title": "Safety",
+      "verified": false
+    },
+    {
+      "id": "aiuc-1/D",
+      "framework": "AIUC-1",
+      "ref": "D",
+      "title": "Reliability",
+      "verified": false
+    },
+    {
+      "id": "aiuc-1/E",
+      "framework": "AIUC-1",
+      "ref": "E",
+      "title": "Accountability",
+      "verified": false
+    },
+    {
+      "id": "csa-aicm/LOG",
+      "framework": "CSA AICM",
+      "ref": "LOG",
+      "title": "Logging and monitoring",
+      "verified": false
+    },
+    {
+      "id": "csa-aicm/DSP",
+      "framework": "CSA AICM",
+      "ref": "DSP",
+      "title": "Data security and privacy",
+      "verified": false
+    },
+    {
+      "id": "csa-aicm/STA",
+      "framework": "CSA AICM",
+      "ref": "STA",
+      "title": "Supply chain, transparency and accountability",
+      "verified": false
+    },
+    {
+      "id": "csa-aicm/CCC",
+      "framework": "CSA AICM",
+      "ref": "CCC",
+      "title": "Change control",
+      "verified": false
+    },
+    {
+      "id": "csa-aicm/SEF",
+      "framework": "CSA AICM",
+      "ref": "SEF",
+      "title": "Security incident management",
+      "verified": false
+    },
+    {
+      "id": "apra-ai-letter/continuous-monitoring",
+      "framework": "APRA AI letter (30 Apr 2026)",
+      "ref": "theme",
+      "title": "Continuous monitoring of AI",
+      "verified": false
+    },
+    {
+      "id": "apra-ai-letter/supply-chain",
+      "framework": "APRA AI letter (30 Apr 2026)",
+      "ref": "theme",
+      "title": "Mapping the full AI supply chain",
+      "verified": false
+    },
+    {
+      "id": "apra-ai-letter/material-change",
+      "framework": "APRA AI letter (30 Apr 2026)",
+      "ref": "theme",
+      "title": "Notice of material changes",
+      "verified": false
+    },
+    {
+      "id": "apra/cps-230",
+      "framework": "APRA CPS 230",
+      "ref": "CPS 230",
+      "title": "Operational risk: service providers",
+      "verified": true
+    },
+    {
+      "id": "privacy-act/app-8",
+      "framework": "Privacy Act 1988 (Cth)",
+      "ref": "APP 8",
+      "title": "Cross-border disclosure",
+      "verified": true
+    },
+    {
+      "id": "privacy-act/app-11",
+      "framework": "Privacy Act 1988 (Cth)",
+      "ref": "APP 11",
+      "title": "Security of personal information",
+      "verified": true
+    }
+  ]
+}
