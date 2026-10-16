@@ -73,8 +73,10 @@ jobs:
         with: { packages-dir: pkg/pypi, skip-existing: true }
 
   npm:
-    # Needs the NPM_TOKEN secret. Platform packages first, so the main
-    # package's optional dependencies exist when it lands.
+    # npm Trusted Publishing: each package names this workflow and the release
+    # environment, so npm checks GitHub's OIDC token and no npm token is stored.
+    # Platform packages first, so the main package's optional dependencies
+    # exist when it lands; versions already on npm are skipped.
     needs: build
     if: vars.PUBLISH_PACKAGES == 'true'
     runs-on: ubuntu-latest
@@ -83,9 +85,13 @@ jobs:
     steps:
       - uses: actions/setup-node@v4
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
+      - run: npm install -g npm@^11.5.1 && npm --version   # trusted publishing needs npm 11.5.1+
       - uses: actions/download-artifact@v4
         with: { name: packages, path: pkg }
-      - env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
-        run: |
-          for t in pkg/tarballs/plumbline-agent-*-*.tgz; do npm publish "$t" --provenance --access public; done
-          npm publish pkg/tarballs/plumbline-agent-[0-9]*.tgz --provenance --access public
+      - run: |
+          publish() {
+            spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
+            if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish "$1" --access public; fi
+          }
+          for t in pkg/tarballs/plumbline-agent-*-*.tgz; do publish "$t"; done
+          publish pkg/tarballs/plumbline-agent-[0-9]*.tgz
