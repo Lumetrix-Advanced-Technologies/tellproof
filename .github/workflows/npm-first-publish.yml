@@ -46,7 +46,8 @@ jobs:
             spec=$(tar xzOf "$t" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
             if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; continue; fi
             echo "Publishing $spec"
-            if npm publish "$t" --access public 2> err.txt; then echo "Published $spec"; exit 0; fi
+            # "./" so npm reads a file: a bare pkg/x.tgz is taken for a GitHub owner/repo.
+            if npm publish "./$t" --access public 2> err.txt; then echo "Published $spec"; exit 0; fi
             cat err.txt
             if grep -q E429 err.txt; then echo "::warning::npm rate limit on $spec; the next scheduled run tries again."; exit 0; fi
             exit 1
