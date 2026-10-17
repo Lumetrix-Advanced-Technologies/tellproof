@@ -15,6 +15,7 @@
   },
   "files": ["lib", "README.md", "LICENSE"],
   "license": "Apache-2.0",
+  "homepage": "https://lumetrix-advanced-technologies.github.io/tellproof/",
   "engines": { "node": ">=18" },
   "sideEffects": false,
   "dependencies": {},

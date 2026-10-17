@@ -10,7 +10,7 @@ import (
 
 // The static site's content pages (P6-3): no scripts, a strict CSP, every
 // local link and anchor resolves, and the copy keeps the brand's rules.
-var sitePages = []string{"security/index.html", "docs/agent/index.html"}
+var sitePages = []string{"index.html", "security/index.html", "docs/agent/index.html"}
 
 var (
 	hrefRE   = regexp.MustCompile(`(?:href|src)="([^"]*)"`)

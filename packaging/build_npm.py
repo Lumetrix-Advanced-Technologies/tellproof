@@ -27,7 +27,7 @@ PLATFORMS = {
 # npm checks provenance against this URL, case-sensitively: it must name the
 # repository exactly as GitHub does.
 REPO = {"type": "git", "url": "git+https://github.com/Lumetrix-Advanced-Technologies/tellproof.git"}
-HOME = "https://github.com/lumetrix-advanced-technologies/tellproof"
+HOME = "https://lumetrix-advanced-technologies.github.io/tellproof/"
 
 LAUNCHER = r"""#!/usr/bin/env node
 // The Tellproof evidence agent, installed with npm. The platform's binary

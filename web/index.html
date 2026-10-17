@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Tellproof: signed, content-free evidence of how an AI system actually runs, checks that can be shown to fail, and evidence for code written by coding agents. Open source.">
+<title>Tellproof</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-row">
+    <a class="wordmark" href="./"><img class="mark" src="favicon.svg" alt="" width="22" height="22">Tellproof</a>
+    <nav aria-label="Site"><a href="verify/">Verify a pack</a><a href="docs/agent/">Agent docs</a><a href="security/">Security</a><a href="https://github.com/Lumetrix-Advanced-Technologies/tellproof">GitHub</a></nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <h1>Evidence that tells on itself</h1>
+  <p class="lede">Tellproof turns an AI system's runtime telemetry into signed, hour-by-hour evidence that a bank, an insurer or an auditor can check without trusting you. No prompt or completion ever leaves your machine. And every check can be shown to fail: an edited hour, a guardrail that stopped catching or a CI gate that tests nothing gives itself away.</p>
+
+  <pre><code>pip install tellproof tellproof-agent     # or: npm install tellproof
+tellproof-agent run --local               # dashboard on 127.0.0.1:4319</code></pre>
+  <p class="small muted">Then add <code>tellproof.init()</code> to your app. Python and Node.js; OpenAI, Anthropic and Amazon Bedrock are instrumented automatically. No account needed.</p>
+
+  <div class="cards">
+    <section class="panel">
+      <h2>Signed, content-free evidence</h2>
+      <p>Every hour of model calls becomes a signed batch chained to the one before: calls and tokens per model and region, guardrail decisions, personal-data redaction, agent tool use, changes and anomalies. Counts and short names only.</p>
+    </section>
+    <section class="panel">
+      <h2>Checks that can fail</h2>
+      <p>Guardrail canaries send known-bad probes through your own guardrail and record whether it caught them. <code>check --self-test</code> shows every evidence objective fails on bad evidence and that tampering with the log is detected.</p>
+    </section>
+    <section class="panel">
+      <h2>Governance as code</h2>
+      <p>Declare models, regions and registers in <code>tellproof.policy.json</code>, next to the code. <code>tellproof-agent check</code> evaluates eleven evidence objectives and fails CI when one fails; <code>aibom</code> writes a CycloneDX AI bill of materials.</p>
+    </section>
+    <section class="panel">
+      <h2>Evidence for coding agents</h2>
+      <p><code>tellproof-agent ci</code> records which gates ran on each commit, how many tests ran, and whether a must-fail canary showed the gate can fail, in a signed in-toto statement that counts the commits a coding agent wrote.</p>
+    </section>
+  </div>
+
+  <h2>Verify, without trusting anyone</h2>
+  <p>Packs are DSSE-signed in-toto statements over canonical JSON. Three independent verifiers (Go, the browser and Python) agree on every published test vector. <a href="verify/">Verify a pack in your browser</a>, or offline with <code>tellproof-verify</code>.</p>
+
+  <h2>Read more</h2>
+  <ul>
+    <li><a href="https://github.com/Lumetrix-Advanced-Technologies/tellproof#readme">The full guide</a>: use cases, setup, every command and option.</li>
+    <li><a href="docs/agent/">Agent docs</a>: install, local mode, reports, governance, deployment.</li>
+    <li><a href="security/">Security</a>: what leaves your environment, what never does, and the limits.</li>
+    <li><a href="https://github.com/Lumetrix-Advanced-Technologies/tellproof/issues/new?template=early-access.yml">Early access</a> to packs signed by an independent issuer.</li>
+  </ul>
+</main>
+
+<footer class="wrap">Tellproof by Lumetrix, formerly Plumbline. The agent, SDKs and verifiers are open source under the Apache License 2.0.</footer>
+</body>
+</html>

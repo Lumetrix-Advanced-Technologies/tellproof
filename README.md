@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="https://lumetrix-advanced-technologies.github.io/tellproof/"><b>Website</b></a> ·
   <a href="#quick-start-five-minutes-no-account"><b>Quick start</b></a> ·
   <a href="#instrument-your-app">Instrument</a> ·
   <a href="#the-dashboard">Dashboard</a> ·
@@ -1128,9 +1129,9 @@ Exit status: **0** all verified, **1** a check failed, **2** a usage or input er
 
 | v0.2 (Plumbline) | v0.3 (Tellproof) | Do you need to change it? |
 | --- | --- | --- |
-| `pip install plumbline-sdk`, `import plumbline` | `pip install tellproof`, `import tellproof` | Yes, when you upgrade: the old package gets no new releases. |
-| `npm install plumbline-sdk` | `npm install tellproof` | Yes, when you upgrade. |
-| `plumbline-agent` (pip, npm, binary, image) | `tellproof-agent` | Yes, when you upgrade. The new agent picks up the old data directory, identity and hash chain. |
+| `pip install plumbline-sdk`, `import plumbline` | `pip install tellproof`, `import tellproof` | Yes: the old packages have been removed from PyPI and npm. |
+| `npm install plumbline-sdk` | `npm install tellproof` | Yes. |
+| `plumbline-agent` (pip, npm, binary, image) | `tellproof-agent` | Yes. The new agent picks up the old data directory, identity and hash chain. The v0.1 and v0.2 release binaries stay on the Releases page. |
 | `PLUMBLINE_*` environment variables | `TELLPROOF_*` | No: the old names are read when the new ones are unset. |
 | `plumbline.*` span attributes | `tellproof.*` | No: both are mapped (`spec/semconv-map.json` v3). |
 | `plumbline.policy.json`, `./.plumbline-agent` | `tellproof.policy.json`, `./.tellproof-agent` | No: the old names are used when the new ones do not exist. |

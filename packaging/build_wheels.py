@@ -94,7 +94,7 @@ def build(binary: Path, goos: str, goarch: str, version: str, out: Path, license
         f"Name: {DIST}",
         f"Version: {version}",
         "Summary: The Tellproof evidence agent: a signed, content-free record of how your AI system runs, with a local dashboard.",
-        "Home-page: https://github.com/lumetrix-advanced-technologies/tellproof",
+        "Home-page: https://lumetrix-advanced-technologies.github.io/tellproof/",
         "Author: Lumetrix",
         "License: Apache-2.0",
         "Project-URL: Source, https://github.com/lumetrix-advanced-technologies/tellproof",

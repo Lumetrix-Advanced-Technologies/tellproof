@@ -18,7 +18,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Lumetrix-Advanced-Technologies/tellproof"
+Homepage = "https://lumetrix-advanced-technologies.github.io/tellproof/"
+Source = "https://github.com/Lumetrix-Advanced-Technologies/tellproof"
 
 [tool.setuptools.packages.find]
 where = ["src"]
