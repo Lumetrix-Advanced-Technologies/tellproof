@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,14 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batchsign"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/commitment"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/localreport"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/queue"
 )
 
 func get(t *testing.T, h http.Handler, method, target, host string) *http.Response {
@@ -53,7 +62,7 @@ func TestRefusesOtherHostsAndWrites(t *testing.T) {
 			t.Errorf("host %q: %d", host, r.StatusCode)
 		}
 	}
-	for _, host := range []string{"localhost", "127.0.0.1:4319", "[::1]:4319", "plumbline.localhost:4319"} {
+	for _, host := range []string{"localhost", "127.0.0.1:4319", "[::1]:4319", "tellproof.localhost:4319"} {
 		if r := get(t, h, "GET", "/api/log", host); r.StatusCode != 200 {
 			t.Errorf("host %q: %d", host, r.StatusCode)
 		}
@@ -95,4 +104,61 @@ func TestBrandTokensMatchTheSite(t *testing.T) {
 	if !bytes.Equal(site, mine) {
 		t.Error("internal/dashboard/static/brand.css differs from web/brand.css: copy it over")
 	}
+}
+
+// The Objectives panel: no policy explains how to make one; with a policy
+// and a log, it is the check for the chosen range.
+func TestCheckAPI(t *testing.T) {
+	dir := sampleLog(t)
+	h := Handler(Options{DataDir: dir, PolicyPath: filepath.Join(t.TempDir(), "none.json")})
+	var api CheckAPI
+	_ = json.NewDecoder(get(t, h, "GET", "/api/check?range=all", "localhost").Body).Decode(&api)
+	if api.Available || !strings.Contains(api.Message, "policy init") {
+		t.Fatalf("no policy: %+v", api)
+	}
+	pol := filepath.Join(t.TempDir(), "p.json")
+	_ = os.WriteFile(pol, []byte(`{"ai_system": "Claims Triage Agent", "timezone": "UTC", "declared_models": [], "declared_regions": []}`), 0o644)
+	h = Handler(Options{DataDir: dir, PolicyPath: pol})
+	api = CheckAPI{}
+	_ = json.NewDecoder(get(t, h, "GET", "/api/check?range=all", "localhost").Body).Decode(&api)
+	if !api.Available || api.Report == nil || len(api.Report.Objectives) != 11 || api.Report.Period.Start != "2026-09-01" {
+		t.Fatalf("with a policy: %+v", api)
+	}
+	// Nothing declared: lineage and residency fail.
+	for _, o := range api.Report.Objectives {
+		if (o.ID == "EO-LIN-01" || o.ID == "EO-RES-01") && o.Status != "fail" {
+			t.Errorf("%s = %s with nothing declared", o.ID, o.Status)
+		}
+	}
+	_ = os.WriteFile(pol, []byte(`{"ai_system": "x", "timezone": "Mars/Olympus"}`), 0o644)
+	api = CheckAPI{}
+	_ = json.NewDecoder(get(t, h, "GET", "/api/check?range=7d", "localhost").Body).Decode(&api)
+	if api.Available || !strings.Contains(api.Message, "timezone") {
+		t.Errorf("a bad policy: %+v", api)
+	}
+}
+
+func sampleLog(t *testing.T) string {
+	t.Helper()
+	m, _ := otlp.DefaultMapping()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "concierge", "testdata", "otlp-sample.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := aggregate.New(aggregate.DefaultConfig())
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) > 0 {
+			res, _ := otlp.Parse(line, m)
+			a.Add(res.Spans, res.Spans[0].Start)
+		}
+	}
+	dir := t.TempDir()
+	id, _ := enrol.LocalIdentity(dir)
+	b, _ := batchsign.NewBuilder(id, m.Version)
+	q, _ := queue.Open(filepath.Join(dir, localreport.Dir))
+	for _, w := range a.FlushAll() {
+		env, _, next, _ := b.Build(context.Background(), q.State(), w, commitment.ForWindow([]byte("s"), w.TraceIDs).Commit, nil)
+		_ = q.Enqueue(env, next)
+	}
+	return dir
 }

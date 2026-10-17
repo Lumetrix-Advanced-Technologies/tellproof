@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
 )
 
 // CloudWatchAPI is the part of the CloudWatch client the Bedrock poller uses.

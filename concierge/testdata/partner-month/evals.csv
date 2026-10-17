@@ -1,0 +1,4 @@
+suite,model,prompt_version,ran_at,pass_rate
+summary-v8,anthropic.claude-sonnet-4-5,14,2026-08-20T01:00:00Z,0.95
+summary-v8,anthropic.claude-sonnet-4-6,14,2026-09-08T01:00:00Z,0.93
+summary-v9,anthropic.claude-sonnet-4-6,15,2026-09-27T09:00:00Z,0.85

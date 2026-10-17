@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batchsign"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/commitment"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/otlp"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/queue"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batchsign"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/commitment"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/queue"
 )
 
 // sample is the concierge's OTLP sample month, aggregated into windows.
@@ -147,5 +147,40 @@ func TestReadRefusesAnotherKey(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, enrol.PublicKeyFile), pub, 0o644)
 	if _, err := Read(dir, Range{}); err == nil || !strings.Contains(err.Error(), "does not belong") {
 		t.Fatalf("another key: %v", err)
+	}
+}
+
+// D-057: the SDK scenario's canaries reach the report, summed by kind, with
+// the missed kind named; a log without canaries says how to start them.
+func TestReportShowsCanaries(t *testing.T) {
+	m, _ := otlp.DefaultMapping()
+	b, err := os.ReadFile(filepath.Join("..", "..", "sdk", "testdata", "python-export.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := aggregate.New(aggregate.DefaultConfig())
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) > 0 {
+			res, _ := otlp.Parse(line, m)
+			a.Add(res.Spans, res.Spans[0].Start)
+		}
+	}
+	s, err := Read(writeLog(t, a.FlushAll(), nil), Range{})
+	if err != nil || !s.Verified {
+		t.Fatalf("%v %+v", err, s)
+	}
+	if len(s.Canaries) != 2 || s.Canaries[0].Kind != "pii" || s.Canaries[0].Run != 2 || s.Canaries[0].Caught != 1 {
+		t.Errorf("canaries %+v", s.Canaries)
+	}
+	var out bytes.Buffer
+	_ = WriteText(&out, s)
+	if want := "Canaries        2 of 3 known-bad probes caught by the guardrail (66.7%); missed: pii (1)"; !strings.Contains(out.String(), want) {
+		t.Errorf("report lacks %q:\n%s", want, out.String())
+	}
+	none, _ := Read(writeLog(t, sample(t), nil), Range{})
+	out.Reset()
+	_ = WriteText(&out, none)
+	if !strings.Contains(out.String(), "Canaries        none run") || none.Canaries == nil {
+		t.Errorf("no canaries:\n%s", out.String())
 	}
 }

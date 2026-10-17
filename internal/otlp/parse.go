@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
 )
 
 // Kind classifies a span for the objectives.
@@ -47,6 +49,8 @@ type Span struct {
 	HighImpact     bool
 	Approved       bool
 	Escalation     bool
+	CanaryKind     string // a guardrail canary's kind (batch.CanaryKind), "" if not a canary
+	CanaryCaught   bool
 }
 
 // Result is one parsed export. Rejected counts spans that could not be used
@@ -303,6 +307,10 @@ func (m *Mapping) build(traceID string, start time.Time, spanVals, resVals map[s
 		HighImpact:     m.flag("tool_high_impact", spanVals),
 		Approved:       m.flag("tool_approved", spanVals),
 		Escalation:     m.flag("escalation", spanVals),
+	}
+	if _, ok := m.pick("canary_kind", spanVals); ok {
+		s.CanaryKind = batch.CanaryKind(strings.ToLower(m.str("canary_kind", spanVals)))
+		s.CanaryCaught = m.flag("canary_caught", spanVals)
 	}
 	if s.Slot == "" {
 		if v, ok := resVals["service.name"]; ok && !v.isNum && !v.isB {

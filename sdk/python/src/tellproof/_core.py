@@ -17,7 +17,7 @@ import os
 import time
 from typing import Any, Callable
 
-log = logging.getLogger("plumbline")
+log = logging.getLogger("tellproof")
 
 MAX_VALUE = 128  # helper strings are names and versions, never text
 DECISIONS = ("allow", "block", "flag")
@@ -33,14 +33,14 @@ OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 REGION = "cloud.region"
 AGENT_NAME = "gen_ai.agent.name"
 TOOL_NAME = "gen_ai.tool.name"
-PROMPT_NAME = "plumbline.prompt.name"
-PROMPT_VERSION = "plumbline.prompt.version"
-DATA_CLASS = "plumbline.data_class"
-REDACTED = "plumbline.redaction.applied"
-GUARDRAIL = "plumbline.guardrail.decision"
-HIGH_IMPACT = "plumbline.tool.high_impact"
-APPROVED = "plumbline.tool.approved"
-ESCALATION = "plumbline.escalation"
+PROMPT_NAME = "tellproof.prompt.name"
+PROMPT_VERSION = "tellproof.prompt.version"
+DATA_CLASS = "tellproof.data_class"
+REDACTED = "tellproof.redaction.applied"
+GUARDRAIL = "tellproof.guardrail.decision"
+HIGH_IMPACT = "tellproof.tool.high_impact"
+APPROVED = "tellproof.tool.approved"
+ESCALATION = "tellproof.escalation"
 
 
 class Stats:
@@ -72,7 +72,7 @@ class Client:
 
 
 _client: Client = Client()  # disabled until init()
-_frame: contextvars.ContextVar[_Frame | None] = contextvars.ContextVar("plumbline_frame", default=None)
+_frame: contextvars.ContextVar[_Frame | None] = contextvars.ContextVar("tellproof_frame", default=None)
 
 
 def current_client() -> Client:
@@ -86,7 +86,7 @@ def set_client(c: Client) -> None:
 
 def _fail(where: str) -> None:
     _client.stats.instrumentation_errors += 1
-    log.debug("plumbline: internal error in %s", where, exc_info=True)
+    log.debug("tellproof: internal error in %s", where, exc_info=True)
 
 
 def clean(v: Any) -> str | None:
@@ -290,7 +290,7 @@ class Guardrail(_Scope):
             self._decision = d
         else:
             _client.stats.instrumentation_errors += 1
-            log.debug("plumbline: guardrail decision must be one of %s", DECISIONS)
+            log.debug("tellproof: guardrail decision must be one of %s", DECISIONS)
 
     def allow(self) -> None:
         self.decision = "allow"
@@ -484,6 +484,6 @@ def escalation() -> None:
     """Record that this request was handed to a person."""
     try:
         now = _client.clock()
-        record("plumbline.escalation", 1, now, now, {ESCALATION: True}, False)
+        record("tellproof.escalation", 1, now, now, {ESCALATION: True}, False)
     except Exception:
         _fail("escalation")

@@ -2,5 +2,6 @@ dist/
 __pycache__/
 *.pyc
 node_modules/
-.plumbline-agent/
+.tellproof-agent/
+.tellproof-ci/
 *.test

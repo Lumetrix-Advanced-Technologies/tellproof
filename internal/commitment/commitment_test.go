@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/merkle"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/merkle"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
 )
 
 var secret = []byte("parity-secret-0123456789")

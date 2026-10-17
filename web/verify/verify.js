@@ -1,4 +1,4 @@
-// Plumbline pack verification for the browser (and node --test). Pure functions,
+// Tellproof pack verification for the browser (and node --test). Pure functions,
 // Web Crypto only, no dependencies. Mirrors internal/pack in Go: both must give the
 // same result for every case in spec/vectors/manifest.json and extra-manifest.json.
 

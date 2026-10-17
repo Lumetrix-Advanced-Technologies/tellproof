@@ -13,8 +13,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/merkle"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/merkle"
 )
 
 // MinSecretBytes is the shortest salt secret accepted.
@@ -44,7 +44,7 @@ func LoadSecret(envValue, path string) ([]byte, error) {
 		}
 		s = bytes.TrimRight(b, "\r\n")
 	default:
-		return nil, errors.New("commitment: no salt secret: set PLUMBLINE_SALT_SECRET or a salt secret file")
+		return nil, errors.New("commitment: no salt secret: set TELLPROOF_SALT_SECRET or a salt secret file")
 	}
 	if len(s) < MinSecretBytes {
 		return nil, fmt.Errorf("commitment: salt secret must be at least %d bytes", MinSecretBytes)

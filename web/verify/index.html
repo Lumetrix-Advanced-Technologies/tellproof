@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https: http://localhost:8080 http://127.0.0.1:8080; img-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<!-- Base URL of the Plumbline API for share links; empty means this page's origin. Set at deploy. -->
-<meta name="plumbline-api" content="">
-<title>Verify a Plumbline pack</title>
+<!-- Base URL of the Tellproof API for share links; empty means this page's origin. Set at deploy. -->
+<meta name="tellproof-api" content="">
+<title>Verify a Tellproof pack</title>
 <link rel="stylesheet" href="../brand.css">
 <link rel="stylesheet" href="verify.css">
 <script type="module" src="page.js"></script>
@@ -15,14 +15,14 @@
 <body>
 <header class="masthead">
   <div class="wrap masthead-row">
-    <span class="wordmark">Plumbline <span class="muted">verify</span></span>
+    <span class="wordmark">Tellproof <span class="muted">verify</span></span>
     <span class="muted small">Checks run in your browser. Nothing you load here is sent anywhere.</span>
   </div>
 </header>
 
 <main class="wrap" id="main">
   <noscript>
-    <p class="notice">This page needs JavaScript to run the checks. You can verify a pack without a browser using <code>plumbline-verify</code>.</p>
+    <p class="notice">This page needs JavaScript to run the checks. You can verify a pack without a browser using <code>tellproof-verify</code>.</p>
   </noscript>
 
   <section id="loading" class="panel" hidden>

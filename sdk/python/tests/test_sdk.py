@@ -14,9 +14,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 sys.path.insert(0, HERE)
 
-import plumbline  # noqa: E402
-from plumbline import _core, _otlp  # noqa: E402
-from plumbline._export import Exporter, http_transport  # noqa: E402
+import tellproof  # noqa: E402
+from tellproof import _core, _otlp  # noqa: E402
+from tellproof._export import Exporter, http_transport  # noqa: E402
 import scenario  # noqa: E402
 
 
@@ -48,15 +48,15 @@ class FixtureTest(unittest.TestCase):
 class HelperTest(unittest.TestCase):
     def test_scopes_stamp_spans_and_nest(self):
         with Capturing() as spans:
-            with plumbline.agent_run("helper"), plumbline.prompt("reply", 7), plumbline.personal_data(redacted=True):
-                with plumbline.llm_call("openai", "gpt-4.1", region="eu-west-1") as c:
+            with tellproof.agent_run("helper"), tellproof.prompt("reply", 7), tellproof.personal_data(redacted=True):
+                with tellproof.llm_call("openai", "gpt-4.1", region="eu-west-1") as c:
                     c.usage(input_tokens=10, output_tokens=3)
                     c.response_model = "gpt-4.1-2026-04-14"
         llm, run = spans
-        self.assertEqual(attrs(llm)["plumbline.prompt.version"], "7")
+        self.assertEqual(attrs(llm)["tellproof.prompt.version"], "7")
         self.assertEqual(attrs(llm)["gen_ai.agent.name"], "helper")
         self.assertEqual(attrs(llm)["gen_ai.response.model"], "gpt-4.1-2026-04-14")
-        self.assertIs(attrs(llm)["plumbline.redaction.applied"], True)
+        self.assertIs(attrs(llm)["tellproof.redaction.applied"], True)
         self.assertEqual(llm["parent"], run["span_id"])
         self.assertEqual(llm["trace_id"], run["trace_id"])
         self.assertEqual(attrs(run)["gen_ai.operation.name"], "invoke_agent")
@@ -64,69 +64,69 @@ class HelperTest(unittest.TestCase):
     def test_spans_outside_scopes_get_their_own_traces(self):
         with Capturing() as spans:
             for _ in range(3):
-                with plumbline.llm_call("openai", "m"):
+                with tellproof.llm_call("openai", "m"):
                     pass
         self.assertEqual(len({s["trace_id"] for s in spans}), 3)
 
     def test_guardrail_decided_after_the_call(self):
         with Capturing() as spans:
-            with plumbline.guardrail() as g:
-                with plumbline.llm_call("openai", "m"):
+            with tellproof.guardrail() as g:
+                with tellproof.llm_call("openai", "m"):
                     pass
                 self.assertEqual(spans, [], "the call must wait for the decision")
                 g.flag()
-        self.assertEqual(attrs(spans[0])["plumbline.guardrail.decision"], "flag")
+        self.assertEqual(attrs(spans[0])["tellproof.guardrail.decision"], "flag")
 
     def test_guardrail_inner_decision_wins_and_outer_fills_the_rest(self):
         with Capturing() as spans:
-            with plumbline.guardrail("allow"):
-                with plumbline.guardrail("block"):
-                    with plumbline.llm_call("openai", "inner"):
+            with tellproof.guardrail("allow"):
+                with tellproof.guardrail("block"):
+                    with tellproof.llm_call("openai", "inner"):
                         pass
-                with plumbline.guardrail():
-                    with plumbline.llm_call("openai", "undecided"):
+                with tellproof.guardrail():
+                    with tellproof.llm_call("openai", "undecided"):
                         pass
-        got = {attrs(s)["gen_ai.request.model"]: attrs(s)["plumbline.guardrail.decision"] for s in spans}
+        got = {attrs(s)["gen_ai.request.model"]: attrs(s)["tellproof.guardrail.decision"] for s in spans}
         self.assertEqual(got, {"inner": "block", "undecided": "allow"})
 
     def test_block_without_a_call_is_one_blocked_call(self):
         with Capturing() as spans:
-            with plumbline.guardrail("block", provider="anthropic", model="claude-haiku-4-5"):
+            with tellproof.guardrail("block", provider="anthropic", model="claude-haiku-4-5"):
                 pass
-            with plumbline.guardrail("allow"):  # allowed but nothing called: nothing to record
+            with tellproof.guardrail("allow"):  # allowed but nothing called: nothing to record
                 pass
         self.assertEqual(len(spans), 1)
         a = attrs(spans[0])
-        self.assertEqual((a["gen_ai.provider.name"], a["gen_ai.request.model"], a["plumbline.guardrail.decision"]),
+        self.assertEqual((a["gen_ai.provider.name"], a["gen_ai.request.model"], a["tellproof.guardrail.decision"]),
                          ("anthropic", "claude-haiku-4-5", "block"))
 
     def test_invalid_decision_is_ignored_not_raised(self):
         with Capturing() as spans:
-            with plumbline.guardrail("maybe"):
-                with plumbline.llm_call("openai", "m"):
+            with tellproof.guardrail("maybe"):
+                with tellproof.llm_call("openai", "m"):
                     pass
             errors = _core.current_client().stats.instrumentation_errors
-        self.assertNotIn("plumbline.guardrail.decision", attrs(spans[0]))
+        self.assertNotIn("tellproof.guardrail.decision", attrs(spans[0]))
         self.assertEqual(errors, 1)
 
     def test_tool_errors_and_approval(self):
         with Capturing() as spans:
             with self.assertRaises(KeyError):
-                with plumbline.tool("refund", high_impact=True) as t:
+                with tellproof.tool("refund", high_impact=True) as t:
                     t.approved = True
                     raise KeyError("x")
         s = spans[0]
         self.assertTrue(s["error"])
-        self.assertEqual((attrs(s)["plumbline.tool.high_impact"], attrs(s)["plumbline.tool.approved"]), (True, True))
+        self.assertEqual((attrs(s)["tellproof.tool.high_impact"], attrs(s)["tellproof.tool.approved"]), (True, True))
 
     def test_decorators_sync_and_async_get_a_fresh_scope_per_call(self):
-        @plumbline.tool("lookup")
+        @tellproof.tool("lookup")
         def lookup(x):
             return x * 2
 
-        @plumbline.agent_run("async-agent")
+        @tellproof.agent_run("async-agent")
         async def run(x):
-            with plumbline.llm_call("openai", "m"):
+            with tellproof.llm_call("openai", "m"):
                 await asyncio.sleep(0)
             return x
 
@@ -140,9 +140,9 @@ class HelperTest(unittest.TestCase):
 
     def test_concurrent_tasks_keep_their_own_context(self):
         async def one(n):
-            with plumbline.prompt("p", n):
+            with tellproof.prompt("p", n):
                 await asyncio.sleep(0.01 * (3 - n))
-                with plumbline.llm_call("openai", "m"):
+                with tellproof.llm_call("openai", "m"):
                     pass
 
         async def main():
@@ -150,20 +150,20 @@ class HelperTest(unittest.TestCase):
 
         with Capturing() as spans:
             asyncio.run(main())
-        self.assertEqual(sorted(attrs(s)["plumbline.prompt.version"] for s in spans), ["0", "1", "2"])
+        self.assertEqual(sorted(attrs(s)["tellproof.prompt.version"] for s in spans), ["0", "1", "2"])
 
     def test_values_are_short_names_only(self):
         with Capturing() as spans:
-            with plumbline.prompt("x" * 1000, {"not": "a version"}):
-                with plumbline.llm_call("openai", "m"):
+            with tellproof.prompt("x" * 1000, {"not": "a version"}):
+                with tellproof.llm_call("openai", "m"):
                     pass
         a = attrs(spans[0])
-        self.assertEqual(len(a["plumbline.prompt.name"]), _core.MAX_VALUE)
-        self.assertNotIn("plumbline.prompt.version", a)
+        self.assertEqual(len(a["tellproof.prompt.name"]), _core.MAX_VALUE)
+        self.assertNotIn("tellproof.prompt.version", a)
 
     def test_usage_ignores_bad_counts(self):
         with Capturing() as spans:
-            with plumbline.llm_call("openai", "m") as c:
+            with tellproof.llm_call("openai", "m") as c:
                 c.usage(input_tokens=-1, output_tokens="12")
                 c.usage(input_tokens=True)
         self.assertNotIn("gen_ai.usage.input_tokens", attrs(spans[0]))
@@ -173,21 +173,21 @@ class HelperTest(unittest.TestCase):
         old = _core.current_client()
         _core.set_client(_core.Client())
         try:
-            with plumbline.agent_run("a"), plumbline.guardrail("block") as g, plumbline.tool("t") as t:
+            with tellproof.agent_run("a"), tellproof.guardrail("block") as g, tellproof.tool("t") as t:
                 t.approved = True
                 g.allow()
-                plumbline.escalation()
-            self.assertFalse(plumbline.is_enabled())
+                tellproof.escalation()
+            self.assertFalse(tellproof.is_enabled())
         finally:
             _core.set_client(old)
 
-    def test_init_respects_plumbline_disabled(self):
-        os.environ["PLUMBLINE_DISABLED"] = "1"
+    def test_init_respects_tellproof_disabled(self):
+        os.environ["TELLPROOF_DISABLED"] = "1"
         try:
-            self.assertFalse(plumbline.init(transport=lambda b: None))
-            self.assertFalse(plumbline.is_enabled())
+            self.assertFalse(tellproof.init(transport=lambda b: None))
+            self.assertFalse(tellproof.is_enabled())
         finally:
-            del os.environ["PLUMBLINE_DISABLED"]
+            del os.environ["TELLPROOF_DISABLED"]
 
 
 class NoContentTest(unittest.TestCase):
@@ -205,19 +205,19 @@ class NoContentTest(unittest.TestCase):
                 marker = "SECRET" + "".join(rng.choices(string.ascii_letters + string.digits + " \"'\\\n{}", k=24))
                 markers.append(marker)
 
-                @plumbline.tool("t", high_impact=rng.random() < 0.5)
+                @tellproof.tool("t", high_impact=rng.random() < 0.5)
                 def act(message, *, note):
                     if rng.random() < 0.3:
                         raise ValueError(message)
                     return message + note
 
                 try:
-                    with plumbline.agent_run("fuzz"), plumbline.guardrail() as g:
-                        with plumbline.llm_call("openai", "m") as c:
+                    with tellproof.agent_run("fuzz"), tellproof.guardrail() as g:
+                        with tellproof.llm_call("openai", "m") as c:
                             c.usage(input_tokens=len(marker), output_tokens=1)
                             act(marker, note=marker)
                         g.decision = rng.choice(["allow", "block", "flag", marker])
-                        plumbline.escalation()
+                        tellproof.escalation()
                 except ValueError:
                     pass
             self.assertTrue(exp.flush(5))
@@ -316,14 +316,14 @@ class AgentEndToEndTest(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         os.environ["HTTP_PROXY"] = "http://127.0.0.1:9"  # must be ignored
         try:
-            self.assertTrue(plumbline.init(f"http://127.0.0.1:{srv.server_port}", service="e2e"))
-            self.assertTrue(plumbline.init())  # idempotent
-            with plumbline.llm_call("openai", "gpt-4.1-mini") as c:
+            self.assertTrue(tellproof.init(f"http://127.0.0.1:{srv.server_port}", service="e2e"))
+            self.assertTrue(tellproof.init())  # idempotent
+            with tellproof.llm_call("openai", "gpt-4.1-mini") as c:
                 c.usage(5, 1)
-            self.assertTrue(plumbline.flush(5))
-            st = plumbline.stats()
+            self.assertTrue(tellproof.flush(5))
+            st = tellproof.stats()
         finally:
-            plumbline.shutdown()
+            tellproof.shutdown()
             del os.environ["HTTP_PROXY"]
             srv.shutdown()
             srv.server_close()
@@ -333,8 +333,85 @@ class AgentEndToEndTest(unittest.TestCase):
         self.assertIn({"key": "service.name", "value": {"stringValue": "e2e"}}, rs["resource"]["attributes"])
         self.assertEqual(len(rs["scopeSpans"][0]["spans"]), 1)
         self.assertEqual((st["exported"], st["dropped"]), (1, 0))
-        self.assertFalse(plumbline.is_enabled())
+        self.assertFalse(tellproof.is_enabled())
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CanaryTest(unittest.TestCase):
+    """Guardrail canaries (D-057): only the kind and the result leave the probe."""
+
+    def test_probes_are_the_spec(self):
+        with open(os.path.join(HERE, "..", "..", "..", "spec", "canaries.json")) as f:
+            spec = json.load(f)
+        self.assertEqual(tellproof.PROBES, {p["kind"]: p["text"] for p in spec["probes"]})
+
+    def test_run_records_kind_and_result_only(self):
+        seen = []
+
+        def check(text):
+            seen.append(text)
+            if "AKIA" in text:
+                raise RuntimeError("guardrail crashed")  # counts as missed
+            return "block" if "instructions" in text else "pii" in text and "4111" in text
+
+        with Capturing() as spans:
+            with tellproof.personal_data():  # an app scope must not leak into canaries
+                got = tellproof.run_canaries(check)
+        self.assertEqual(got, {"prompt_injection": True, "jailbreak": False, "pii": False, "secret": False})
+        self.assertEqual(seen, list(tellproof.PROBES.values()))
+        self.assertEqual(len(spans), 4)
+        for s in spans:
+            self.assertEqual(set(attrs(s)), {"tellproof.canary.kind", "tellproof.canary.caught"})
+            self.assertIsNone(s["parent"])
+        self.assertEqual(len({s["trace_id"] for s in spans}), 4)
+        dumped = json.dumps(spans)
+        for text in tellproof.PROBES.values():
+            self.assertNotIn(text[:20], dumped)
+
+    def test_canary_and_kinds(self):
+        with Capturing() as spans:
+            tellproof.canary("Prompt_Injection", True)
+            tellproof.canary("custom-check_2", "allow")
+            tellproof.canary("has space", True)  # refused, counted as an SDK error
+            tellproof.canary(None, True)
+            got = tellproof.run_canaries(lambda t: True, kinds=["pii", "unknown"])
+        self.assertEqual(got, {"pii": True})
+        self.assertEqual([(attrs(s)["tellproof.canary.kind"], attrs(s)["tellproof.canary.caught"]) for s in spans],
+                         [("prompt_injection", True), ("custom-check_2", False), ("pii", True)])
+
+    def test_async_and_disabled(self):
+        async def check(text):
+            return True
+
+        with Capturing() as spans:
+            got = asyncio.run(tellproof.arun_canaries(check, kinds=["secret"]))
+            missed = tellproof.run_canaries(check, kinds=["secret"])  # sync runner, async check: missed
+        self.assertEqual((got, missed), ({"secret": True}, {"secret": False}))
+        self.assertEqual(len(spans), 2)
+        calls = []
+        old = _core.current_client()
+        _core.set_client(_core.Client())  # off: the guardrail is not called at all
+        try:
+            self.assertEqual(tellproof.run_canaries(lambda t: calls.append(t)), {})
+        finally:
+            _core.set_client(old)
+        self.assertEqual(calls, [])
+
+    def test_schedule(self):
+        ran = threading.Event()
+
+        def check(text):
+            ran.set()
+            return True
+
+        with Capturing() as spans:
+            s = tellproof.schedule_canaries(check, every=0, kinds=["pii"])
+            self.assertTrue(ran.wait(2))
+            s.stop()
+            s._thread.join(2)
+        self.assertFalse(s._thread.is_alive())
+        self.assertEqual(s._every, 60.0)
+        self.assertGreaterEqual(len(spans), 1)

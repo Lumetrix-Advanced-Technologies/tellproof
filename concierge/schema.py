@@ -1,5 +1,5 @@
 """The subset of JSON Schema (2020-12) that spec/pack.schema.json and spec/batch.schema.json
-use: type, required, properties, additionalProperties, items, minItems, enum, const,
+use: type, required, properties, additionalProperties, items, minItems, maxItems, enum, const,
 pattern, minimum, maximum, oneOf, format (date, date-time). No dependencies."""
 import datetime as dt
 import re
@@ -74,6 +74,8 @@ def errors(value, schema: dict, path: str = "$") -> list[str]:
     if isinstance(value, list):
         if "minItems" in schema and len(value) < schema["minItems"]:
             out.append(f"{path}: needs at least {schema['minItems']} items")
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            out.append(f"{path}: has more than {schema['maxItems']} items")
         if "items" in schema:
             for i, v in enumerate(value):
                 out += errors(v, schema["items"], f"{path}[{i}]")

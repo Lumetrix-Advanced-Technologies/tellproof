@@ -14,13 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/commitment"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/dsse"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/jcs"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/commitment"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/dsse"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/jcs"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
 )
 
 const agentID = "agt_0123456789abcdef"
@@ -170,5 +170,60 @@ func TestBuildRefusesNumbersThatWouldNotSurviveJSON(t *testing.T) {
 	w.Metrics.LateSpans = 1<<53 + 1
 	if _, _, _, err := b.Build(context.Background(), State{}, w, batch.Commit{Root: strings.Repeat("0", 64)}, nil); err == nil {
 		t.Error("a count beyond 2^53 was accepted")
+	}
+}
+
+// D-057: a window with canaries is signed as v0.3 and validates against
+// spec/batch-v0.3.schema.json; one without stays byte-for-byte v0.2. Each
+// version refuses the other's shape.
+func TestCanaryWindowsAreV03(t *testing.T) {
+	id := identity(t)
+	b, _ := NewBuilder(id, "v3")
+	ws := sampleWindows(t)
+	ws[1].Metrics.Canaries = []batch.Canary{{Kind: "pii", Run: 2, Caught: 1}}
+	pub := id.Key.Public().(ed25519.PublicKey)
+	st := State{}
+	var envs []*dsse.Envelope
+	for _, w := range ws {
+		env, payload, next, err := b.Build(context.Background(), st, w, batch.Commit{Root: strings.Repeat("0", 64)}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st = next
+		envs = append(envs, env)
+		bt, err := Verify(env, pub, agentID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, schemaFile := batch.Schema, "spec/batch.schema.json"
+		if len(w.Metrics.Canaries) > 0 {
+			want, schemaFile = batch.SchemaCanaries, "spec/batch-v0.3.schema.json"
+		}
+		if bt.Schema != want || bytes.Contains(payload, []byte(`"canaries"`)) != (want == batch.SchemaCanaries) {
+			t.Errorf("schema %s for canaries %v", bt.Schema, w.Metrics.Canaries)
+		}
+		if py, err := exec.LookPath("python3"); err == nil {
+			script := "import sys, json; sys.path.insert(0, 'concierge'); import schema; " +
+				"e = schema.errors(json.loads(sys.stdin.read()), json.load(open('" + schemaFile + "'))); print('\\n'.join(e)); sys.exit(1 if e else 0)"
+			cmd := exec.Command(py, "-c", script)
+			cmd.Dir = filepath.Join("..", "..")
+			cmd.Stdin = bytes.NewReader(payload)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Errorf("%s payload does not match %s: %s", bt.Schema, schemaFile, out)
+			}
+		}
+	}
+	resign := func(payload []byte) *dsse.Envelope {
+		s, _ := dsse.NewEd25519Signer(id.Key, agentID)
+		env, _ := dsse.Sign(context.Background(), s, batch.PayloadType, payload)
+		return env
+	}
+	for name, p := range map[string][]byte{
+		"v0.2 with canaries":    bytes.Replace(envs[1].Payload, []byte(batch.SchemaCanaries), []byte(batch.Schema), 1),
+		"v0.3 without canaries": bytes.Replace(envs[0].Payload, []byte(batch.Schema), []byte(batch.SchemaCanaries), 1),
+	} {
+		if _, err := Verify(resign(p), pub, agentID); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

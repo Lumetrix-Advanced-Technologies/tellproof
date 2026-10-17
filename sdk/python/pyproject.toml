@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "plumbline-sdk"
-version = "0.1.0"
-description = "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Plumbline agent."
+name = "tellproof"
+version = "0.2.0"
+description = "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Tellproof agent."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -18,10 +18,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Lumetrix-Advanced-Technologies/plumbline"
+Homepage = "https://github.com/Lumetrix-Advanced-Technologies/tellproof"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-plumbline = ["py.typed"]
+tellproof = ["py.typed"]

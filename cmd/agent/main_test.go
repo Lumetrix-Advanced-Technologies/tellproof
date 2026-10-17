@@ -24,7 +24,7 @@ func getenv(kv ...string) func(string) string {
 
 func TestDryRunReplay(t *testing.T) {
 	var out, errb bytes.Buffer
-	env := getenv("PLUMBLINE_SALT_SECRET", "a-salt-secret-0123456", "PLUMBLINE_DATA_DIR", filepath.Join(t.TempDir(), "d"))
+	env := getenv("TELLPROOF_SALT_SECRET", "a-salt-secret-0123456", "TELLPROOF_DATA_DIR", filepath.Join(t.TempDir(), "d"))
 	code := run(context.Background(), []string{"--config", example, "--dry-run", "--replay", sample}, env, &out, &errb)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
@@ -63,7 +63,7 @@ func TestUsageErrors(t *testing.T) {
 
 func TestVersion(t *testing.T) {
 	var out bytes.Buffer
-	if code := run(context.Background(), []string{"version"}, getenv(), &out, &out); code != 0 || !strings.HasPrefix(out.String(), "plumbline-agent ") {
+	if code := run(context.Background(), []string{"version"}, getenv(), &out, &out); code != 0 || !strings.HasPrefix(out.String(), "tellproof-agent ") {
 		t.Errorf("version: exit %d %q", code, out.String())
 	}
 }

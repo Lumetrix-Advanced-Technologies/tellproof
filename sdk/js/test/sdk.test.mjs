@@ -10,7 +10,7 @@ import * as esm from '../lib/index.mjs';
 import { FIXTURE, Capture, exportLines } from './scenario.mjs';
 
 const require = createRequire(import.meta.url);
-const plumbline = require('../lib/index.cjs');
+const tellproof = require('../lib/index.cjs');
 const core = require('../lib/core.cjs');
 const otlp = require('../lib/otlp.cjs');
 const { Exporter } = require('../lib/export.cjs');
@@ -35,16 +35,16 @@ test('the committed fixture is current', () => {
 });
 
 test('import and require share one SDK instance', () => {
-  assert.equal(esm.init, plumbline.init);
-  assert.equal(esm.default, plumbline);
+  assert.equal(esm.init, tellproof.init);
+  assert.equal(esm.default, tellproof);
 });
 
 test('scopes stamp spans and nest', async () => {
   const spans = await spansOf(() =>
-    plumbline.agentRun('helper', () =>
-      plumbline.prompt('reply', 7, () =>
-        plumbline.personalData({ redacted: true }, () =>
-          plumbline.llmCall({ provider: 'openai', model: 'gpt-4.1', region: 'eu-west-1' }, (c) => {
+    tellproof.agentRun('helper', () =>
+      tellproof.prompt('reply', 7, () =>
+        tellproof.personalData({ redacted: true }, () =>
+          tellproof.llmCall({ provider: 'openai', model: 'gpt-4.1', region: 'eu-west-1' }, (c) => {
             c.usage(10, 3);
             c.responseModel = 'gpt-4.1-2026-04-14';
           }),
@@ -53,10 +53,10 @@ test('scopes stamp spans and nest', async () => {
     ),
   );
   const [llm, run] = spans;
-  assert.equal(attrs(llm)['plumbline.prompt.version'], '7');
+  assert.equal(attrs(llm)['tellproof.prompt.version'], '7');
   assert.equal(attrs(llm)['gen_ai.agent.name'], 'helper');
   assert.equal(attrs(llm)['gen_ai.response.model'], 'gpt-4.1-2026-04-14');
-  assert.equal(attrs(llm)['plumbline.redaction.applied'], true);
+  assert.equal(attrs(llm)['tellproof.redaction.applied'], true);
   assert.equal(llm.parent, run.spanId);
   assert.equal(llm.traceId, run.traceId);
   assert.equal(attrs(run)['gen_ai.operation.name'], 'invoke_agent');
@@ -64,41 +64,41 @@ test('scopes stamp spans and nest', async () => {
 
 test('spans outside scopes get their own traces', async () => {
   const spans = await spansOf(() => {
-    for (let i = 0; i < 3; i++) plumbline.llmCall({ provider: 'openai', model: 'm' }, () => {});
+    for (let i = 0; i < 3; i++) tellproof.llmCall({ provider: 'openai', model: 'm' }, () => {});
   });
   assert.equal(new Set(spans.map((s) => s.traceId)).size, 3);
 });
 
 test('a guardrail decided after the call', async () => {
   const spans = await spansOf(() =>
-    plumbline.guardrail((g) => {
-      plumbline.llmCall({ provider: 'openai', model: 'm' }, () => {});
+    tellproof.guardrail((g) => {
+      tellproof.llmCall({ provider: 'openai', model: 'm' }, () => {});
       assert.equal(core.currentClient().stats.spans, 0, 'the call waits for the decision');
       g.flag();
     }),
   );
-  assert.equal(attrs(spans[0])['plumbline.guardrail.decision'], 'flag');
+  assert.equal(attrs(spans[0])['tellproof.guardrail.decision'], 'flag');
 });
 
 test('an inner guardrail decision wins and an outer one fills the rest', async () => {
   const spans = await spansOf(() =>
-    plumbline.guardrail('allow', () => {
-      plumbline.guardrail('block', () => plumbline.llmCall({ provider: 'openai', model: 'inner' }, () => {}));
-      plumbline.guardrail(() => plumbline.llmCall({ provider: 'openai', model: 'undecided' }, () => {}));
+    tellproof.guardrail('allow', () => {
+      tellproof.guardrail('block', () => tellproof.llmCall({ provider: 'openai', model: 'inner' }, () => {}));
+      tellproof.guardrail(() => tellproof.llmCall({ provider: 'openai', model: 'undecided' }, () => {}));
     }),
   );
-  const got = Object.fromEntries(spans.map((s) => [attrs(s)['gen_ai.request.model'], attrs(s)['plumbline.guardrail.decision']]));
+  const got = Object.fromEntries(spans.map((s) => [attrs(s)['gen_ai.request.model'], attrs(s)['tellproof.guardrail.decision']]));
   assert.deepEqual(got, { inner: 'block', undecided: 'allow' });
 });
 
 test('a block without a call is one blocked call', async () => {
   const spans = await spansOf(() => {
-    plumbline.guardrail({ decision: 'block', provider: 'anthropic', model: 'claude-haiku-4-5' }, () => {});
-    plumbline.guardrail('allow', () => {}); // allowed, nothing called: nothing to record
+    tellproof.guardrail({ decision: 'block', provider: 'anthropic', model: 'claude-haiku-4-5' }, () => {});
+    tellproof.guardrail('allow', () => {}); // allowed, nothing called: nothing to record
   });
   assert.equal(spans.length, 1);
   const a = attrs(spans[0]);
-  assert.deepEqual([a['gen_ai.provider.name'], a['gen_ai.request.model'], a['plumbline.guardrail.decision']], [
+  assert.deepEqual([a['gen_ai.provider.name'], a['gen_ai.request.model'], a['tellproof.guardrail.decision']], [
     'anthropic',
     'claude-haiku-4-5',
     'block',
@@ -108,10 +108,10 @@ test('a block without a call is one blocked call', async () => {
 test('an invalid decision is ignored, not thrown', async () => {
   let errors;
   const spans = await spansOf(() => {
-    plumbline.guardrail('maybe', () => plumbline.llmCall({ provider: 'openai', model: 'm' }, () => {}));
+    tellproof.guardrail('maybe', () => tellproof.llmCall({ provider: 'openai', model: 'm' }, () => {}));
     errors = core.currentClient().stats.instrumentationErrors;
   });
-  assert.ok(!('plumbline.guardrail.decision' in attrs(spans[0])));
+  assert.ok(!('tellproof.guardrail.decision' in attrs(spans[0])));
   assert.equal(errors, 1);
 });
 
@@ -120,7 +120,7 @@ test('tool errors and approval; the app error passes through', async () => {
   const spans = await spansOf(() => {
     assert.throws(
       () =>
-        plumbline.tool('refund', { highImpact: true }, (t) => {
+        tellproof.tool('refund', { highImpact: true }, (t) => {
           t.approved = true;
           throw boom;
         }),
@@ -128,20 +128,20 @@ test('tool errors and approval; the app error passes through', async () => {
     );
   });
   assert.equal(spans[0].error, true);
-  assert.deepEqual([attrs(spans[0])['plumbline.tool.high_impact'], attrs(spans[0])['plumbline.tool.approved']], [true, true]);
+  assert.deepEqual([attrs(spans[0])['tellproof.tool.high_impact'], attrs(spans[0])['tellproof.tool.approved']], [true, true]);
 });
 
 test('async scopes end when their promise settles and keep the value', async () => {
   const spans = await spansOf(async () => {
-    const v = await plumbline.agentRun('async-agent', async () => {
+    const v = await tellproof.agentRun('async-agent', async () => {
       await new Promise((r) => setTimeout(r, 5));
-      await plumbline.llmCall({ provider: 'openai', model: 'm' }, async () => {
+      await tellproof.llmCall({ provider: 'openai', model: 'm' }, async () => {
         await new Promise((r) => setImmediate(r));
       });
       return 42;
     });
     assert.equal(v, 42);
-    await assert.rejects(plumbline.tool('t', async () => Promise.reject(new RangeError('r'))), RangeError);
+    await assert.rejects(tellproof.tool('t', async () => Promise.reject(new RangeError('r'))), RangeError);
   });
   assert.deepEqual(spans.map((s) => s.name), ['chat', 'invoke_agent', 'execute_tool']);
   assert.equal(spans[0].traceId, spans[1].traceId);
@@ -152,28 +152,28 @@ test('concurrent requests keep their own context', async () => {
   const spans = await spansOf(() =>
     Promise.all(
       [0, 1, 2].map((n) =>
-        plumbline.prompt('p', n, async () => {
+        tellproof.prompt('p', n, async () => {
           await new Promise((r) => setTimeout(r, 10 * (3 - n)));
-          plumbline.llmCall({ provider: 'openai', model: 'm' }, () => {});
+          tellproof.llmCall({ provider: 'openai', model: 'm' }, () => {});
         }),
       ),
     ),
   );
-  assert.deepEqual(spans.map((s) => attrs(s)['plumbline.prompt.version']).sort(), ['0', '1', '2']);
+  assert.deepEqual(spans.map((s) => attrs(s)['tellproof.prompt.version']).sort(), ['0', '1', '2']);
   assert.equal(new Set(spans.map((s) => s.traceId)).size, 3);
 });
 
 test('values are short names only', async () => {
   const spans = await spansOf(() =>
-    plumbline.prompt('x'.repeat(1000), { not: 'a version' }, () => plumbline.llmCall({ provider: 'openai', model: 'm' }, () => {})),
+    tellproof.prompt('x'.repeat(1000), { not: 'a version' }, () => tellproof.llmCall({ provider: 'openai', model: 'm' }, () => {})),
   );
-  assert.equal(attrs(spans[0])['plumbline.prompt.name'].length, core.MAX_VALUE);
-  assert.ok(!('plumbline.prompt.version' in attrs(spans[0])));
+  assert.equal(attrs(spans[0])['tellproof.prompt.name'].length, core.MAX_VALUE);
+  assert.ok(!('tellproof.prompt.version' in attrs(spans[0])));
 });
 
 test('usage ignores bad counts', async () => {
   const spans = await spansOf(() =>
-    plumbline.llmCall({ provider: 'openai', model: 'm' }, (c) => {
+    tellproof.llmCall({ provider: 'openai', model: 'm' }, (c) => {
       c.usage(-1, '12');
       c.usage(1.5, true);
     }),
@@ -186,31 +186,31 @@ test('disabled is a no-op that still runs the app', () => {
   const old = core.currentClient();
   core.setClient(new core.Client());
   try {
-    const r = plumbline.agentRun('a', () =>
-      plumbline.guardrail('block', (g) =>
-        plumbline.tool('t', (t) => {
+    const r = tellproof.agentRun('a', () =>
+      tellproof.guardrail('block', (g) =>
+        tellproof.tool('t', (t) => {
           t.approved = true;
           g.allow();
-          plumbline.escalation();
+          tellproof.escalation();
           return 'ran';
         }),
       ),
     );
     assert.equal(r, 'ran');
-    assert.equal(plumbline.isEnabled(), false);
-    assert.equal(plumbline.trace('not a function'), undefined); // misuse never throws
+    assert.equal(tellproof.isEnabled(), false);
+    assert.equal(tellproof.trace('not a function'), undefined); // misuse never throws
   } finally {
     core.setClient(old);
   }
 });
 
-test('init respects PLUMBLINE_DISABLED', () => {
-  process.env.PLUMBLINE_DISABLED = '1';
+test('init respects TELLPROOF_DISABLED', () => {
+  process.env.TELLPROOF_DISABLED = '1';
   try {
-    assert.equal(plumbline.init({ transport: () => {} }), false);
-    assert.equal(plumbline.isEnabled(), false);
+    assert.equal(tellproof.init({ transport: () => {} }), false);
+    assert.equal(tellproof.isEnabled(), false);
   } finally {
-    delete process.env.PLUMBLINE_DISABLED;
+    delete process.env.TELLPROOF_DISABLED;
   }
 });
 
@@ -230,19 +230,19 @@ test('random text never reaches an export', async () => {
       for (let j = 0; j < 24; j++) marker += chars[Math.floor(rnd() * chars.length)];
       markers.push(marker);
       const act = (message, note) =>
-        plumbline.tool('t', { highImpact: rnd() < 0.5 }, () => {
+        tellproof.tool('t', { highImpact: rnd() < 0.5 }, () => {
           if (rnd() < 0.3) throw new Error(message);
           return message + note;
         });
       try {
-        await plumbline.agentRun('fuzz', () =>
-          plumbline.guardrail(async (g) => {
-            await plumbline.llmCall({ provider: 'openai', model: 'm' }, async (c) => {
+        await tellproof.agentRun('fuzz', () =>
+          tellproof.guardrail(async (g) => {
+            await tellproof.llmCall({ provider: 'openai', model: 'm' }, async (c) => {
               c.usage(marker.length, 1);
               act(marker, marker);
             });
             g.decision = ['allow', 'block', 'flag', marker][Math.floor(rnd() * 4)];
-            plumbline.escalation();
+            tellproof.escalation();
           }),
         );
       } catch {}
@@ -305,14 +305,14 @@ test('init sends OTLP JSON to the agent URL', async () => {
   });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   try {
-    assert.equal(plumbline.init({ agentUrl: `http://127.0.0.1:${srv.address().port}/`, service: 'e2e', instrument: false }), true);
-    assert.equal(plumbline.init(), true); // idempotent
-    plumbline.llmCall({ provider: 'openai', model: 'gpt-4.1-mini' }, (c) => c.usage(5, 1));
-    assert.equal(await plumbline.flush(5000), true);
-    const st = plumbline.stats();
+    assert.equal(tellproof.init({ agentUrl: `http://127.0.0.1:${srv.address().port}/`, service: 'e2e', instrument: false }), true);
+    assert.equal(tellproof.init(), true); // idempotent
+    tellproof.llmCall({ provider: 'openai', model: 'gpt-4.1-mini' }, (c) => c.usage(5, 1));
+    assert.equal(await tellproof.flush(5000), true);
+    const st = tellproof.stats();
     assert.deepEqual([st.exported, st.dropped], [1, 0]);
   } finally {
-    await plumbline.shutdown();
+    await tellproof.shutdown();
     srv.close();
   }
   const [path, ctype, body] = received[0];
@@ -323,7 +323,7 @@ test('init sends OTLP JSON to the agent URL', async () => {
     { key: 'service.name', value: { stringValue: 'e2e' } },
   );
   assert.equal(rs.scopeSpans[0].spans.length, 1);
-  assert.equal(plumbline.isEnabled(), false);
+  assert.equal(tellproof.isEnabled(), false);
 });
 
 test('a script that awaits flush() is not cut short by the unref\'d timers', () => {
@@ -337,4 +337,72 @@ test('a script that awaits flush() is not cut short by the unref\'d timers', () 
     exp.flush(5000).then((ok) => console.log('flushed', ok, exp.exported));`;
   const out = execFileSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 10000 });
   assert.equal(out.trim(), 'flushed true 1');
+});
+
+// Guardrail canaries (D-057): only the kind and the result leave the probe.
+test('canary probes are spec/canaries.json', () => {
+  const spec = JSON.parse(readFileSync(new URL('../../../spec/canaries.json', import.meta.url), 'utf8'));
+  assert.deepEqual({ ...tellproof.PROBES }, Object.fromEntries(spec.probes.map((p) => [p.kind, p.text])));
+  assert.equal(esm.runCanaries, tellproof.runCanaries);
+});
+
+test('runCanaries records the kind and the result only', async () => {
+  const seen = [];
+  let got;
+  const spans = await spansOf(() =>
+    tellproof.personalData(async () => {
+      got = await tellproof.runCanaries(async (text) => {
+        seen.push(text);
+        if (text.includes('AKIA')) throw new Error('guardrail crashed'); // counts as missed
+        return text.includes('instructions') ? 'block' : text.includes('4111') ? true : 'allow';
+      });
+    }),
+  );
+  assert.deepEqual(got, { prompt_injection: true, jailbreak: false, pii: true, secret: false });
+  assert.deepEqual(seen, Object.values(tellproof.PROBES));
+  assert.equal(spans.length, 4);
+  for (const s of spans) {
+    assert.deepEqual(Object.keys(attrs(s)).sort(), ['tellproof.canary.caught', 'tellproof.canary.kind']);
+    assert.equal(s.parent, null);
+  }
+  assert.equal(new Set(spans.map((s) => s.traceId)).size, 4);
+  const dumped = JSON.stringify(spans, (k, v) => (typeof v === 'bigint' ? String(v) : v));
+  for (const text of Object.values(tellproof.PROBES)) assert.ok(!dumped.includes(text.slice(0, 20)));
+});
+
+test('canary() and kinds', async () => {
+  let got;
+  const spans = await spansOf(async () => {
+    tellproof.canary('Prompt_Injection', true);
+    tellproof.canary('custom-check_2', 'allow');
+    tellproof.canary('has space', true);
+    tellproof.canary(null, true);
+    got = await tellproof.runCanaries(() => true, { kinds: ['pii', 'unknown'] });
+  });
+  assert.deepEqual(got, { pii: true });
+  assert.deepEqual(
+    spans.map((s) => [attrs(s)['tellproof.canary.kind'], attrs(s)['tellproof.canary.caught']]),
+    [['prompt_injection', true], ['custom-check_2', false], ['pii', true]],
+  );
+});
+
+test('canaries do not call the guardrail when the SDK is off; schedules unref and stop', async () => {
+  const calls = [];
+  const old = core.currentClient();
+  core.setClient(new core.Client());
+  try {
+    assert.deepEqual(await tellproof.runCanaries((t) => calls.push(t)), {});
+  } finally {
+    core.setClient(old);
+  }
+  assert.deepEqual(calls, []);
+  let ran = 0;
+  const spans = await spansOf(async () => {
+    const s = tellproof.scheduleCanaries(() => { ran++; return true; }, { every: 0, kinds: ['pii'] });
+    assert.equal(s.every, 60_000);
+    await new Promise((r) => setTimeout(r, 20));
+    s.stop();
+  });
+  assert.equal(ran, 1);
+  assert.equal(spans.length, 1);
 });

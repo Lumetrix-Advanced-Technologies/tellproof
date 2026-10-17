@@ -40,5 +40,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f cmd/agent/Dockerfile --build-arg VERSION=ci -t plumbline-agent:ci .
-      - run: docker run --rm plumbline-agent:ci version | grep -q "plumbline-agent ci"
+      - run: docker build -f cmd/agent/Dockerfile --build-arg VERSION=ci -t tellproof-agent:ci .
+      - run: docker run --rm tellproof-agent:ci version | grep -q "tellproof-agent ci"

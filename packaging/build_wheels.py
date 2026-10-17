@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build the `plumbline-agent` wheels from release binaries (D-054).
+"""Build the `tellproof-agent` wheels from release binaries (D-054).
 
 One wheel per platform, each holding that platform's static Go binary and a
-small launcher, so `pip install plumbline-agent` puts `plumbline-agent` on the
+small launcher, so `pip install tellproof-agent` puts `tellproof-agent` on the
 PATH with nothing downloaded at install time and no build step. Standard
 library only: a wheel is a zip with a fixed layout (PEP 427).
 
@@ -16,8 +16,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-NAME = "plumbline_agent"
-DIST = "plumbline-agent"
+NAME = "tellproof_agent"
+DIST = "tellproof-agent"
 
 # Go platform -> wheel platform tag. Go 1.26 binaries need macOS 12 or later;
 # the Linux binaries are static, so any glibc or musl system runs them.
@@ -30,11 +30,11 @@ PLATFORMS = {
     ("windows", "arm64"): "win_arm64",
 }
 
-LAUNCHER = '''"""The Plumbline evidence agent, installed with pip.
+LAUNCHER = '''"""The Tellproof evidence agent, installed with pip.
 
 This package holds the agent's static binary for this platform; the
-`plumbline-agent` command runs it with the same arguments. Source, docs and
-signed release binaries: https://github.com/lumetrix-advanced-technologies/plumbline
+`tellproof-agent` command runs it with the same arguments. Source, docs and
+signed release binaries: https://github.com/lumetrix-advanced-technologies/tellproof
 """
 import os
 import subprocess
@@ -45,7 +45,7 @@ __version__ = "{version}"
 
 def binary() -> str:
     """The path of the bundled agent binary."""
-    name = "plumbline-agent.exe" if os.name == "nt" else "plumbline-agent"
+    name = "tellproof-agent.exe" if os.name == "nt" else "tellproof-agent"
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", name)
 
 
@@ -62,16 +62,16 @@ def main() -> None:
 
 MAIN = "from . import main\n\nmain()\n"
 
-DESCRIPTION = """# plumbline-agent
+DESCRIPTION = """# tellproof-agent
 
-The [Plumbline](https://github.com/lumetrix-advanced-technologies/plumbline) evidence agent, installed with pip.
+The [Tellproof](https://github.com/lumetrix-advanced-technologies/tellproof) evidence agent, installed with pip.
 
 ```bash
-pip install plumbline-agent plumbline-sdk
-plumbline-agent run --local      # no account or server; dashboard on http://127.0.0.1:4319
+pip install tellproof-agent tellproof
+tellproof-agent run --local      # no account or server; dashboard on http://127.0.0.1:4319
 ```
 
-Add `import plumbline; plumbline.init()` to your app. The agent keeps a signed,
+Add `import tellproof; tellproof.init()` to your app. The agent keeps a signed,
 content-free hourly record of every model call: models and regions, tokens,
 guardrail decisions, personal-data redaction, agent tool use, prompt and model
 changes. It never reads a prompt or a completion.
@@ -88,17 +88,17 @@ def record_hash(data: bytes) -> str:
 def build(binary: Path, goos: str, goarch: str, version: str, out: Path, license_text: bytes) -> Path:
     tag = PLATFORMS[(goos, goarch)]
     info = f"{NAME}-{version}.dist-info"
-    exe = "plumbline-agent.exe" if goos == "windows" else "plumbline-agent"
+    exe = "tellproof-agent.exe" if goos == "windows" else "tellproof-agent"
     metadata = "\n".join([
         "Metadata-Version: 2.1",
         f"Name: {DIST}",
         f"Version: {version}",
-        "Summary: The Plumbline evidence agent: a signed, content-free record of how your AI system runs, with a local dashboard.",
-        "Home-page: https://github.com/lumetrix-advanced-technologies/plumbline",
+        "Summary: The Tellproof evidence agent: a signed, content-free record of how your AI system runs, with a local dashboard.",
+        "Home-page: https://github.com/lumetrix-advanced-technologies/tellproof",
         "Author: Lumetrix",
         "License: Apache-2.0",
-        "Project-URL: Source, https://github.com/lumetrix-advanced-technologies/plumbline",
-        "Project-URL: Releases, https://github.com/lumetrix-advanced-technologies/plumbline/releases",
+        "Project-URL: Source, https://github.com/lumetrix-advanced-technologies/tellproof",
+        "Project-URL: Releases, https://github.com/lumetrix-advanced-technologies/tellproof/releases",
         "Classifier: License :: OSI Approved :: Apache Software License",
         "Classifier: Programming Language :: Python :: 3",
         "Requires-Python: >=3.8",
@@ -106,7 +106,7 @@ def build(binary: Path, goos: str, goarch: str, version: str, out: Path, license
         "",
         DESCRIPTION,
     ]).encode()
-    wheel_meta = "\n".join(["Wheel-Version: 1.0", "Generator: plumbline build_wheels.py", "Root-Is-Purelib: false",
+    wheel_meta = "\n".join(["Wheel-Version: 1.0", "Generator: tellproof build_wheels.py", "Root-Is-Purelib: false",
                             *[f"Tag: py3-none-{t}" for t in tag.split(".")], ""]).encode()
     files = [
         (f"{NAME}/__init__.py", LAUNCHER.format(version=version).encode(), 0o644),
@@ -114,7 +114,7 @@ def build(binary: Path, goos: str, goarch: str, version: str, out: Path, license
         (f"{NAME}/bin/{exe}", binary.read_bytes(), 0o755),
         (f"{info}/METADATA", metadata, 0o644),
         (f"{info}/WHEEL", wheel_meta, 0o644),
-        (f"{info}/entry_points.txt", b"[console_scripts]\nplumbline-agent = plumbline_agent:main\n", 0o644),
+        (f"{info}/entry_points.txt", b"[console_scripts]\ntellproof-agent = tellproof_agent:main\n", 0o644),
         (f"{info}/LICENSE", license_text, 0o644),
     ]
     record = "".join(f"{p},{record_hash(d)},{len(d)}\n" for p, d, _ in files) + f"{info}/RECORD,,\n"
@@ -132,7 +132,7 @@ def build(binary: Path, goos: str, goarch: str, version: str, out: Path, license
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--dist", required=True, help="directory with plumbline-agent-<os>-<arch>[.exe] binaries")
+    ap.add_argument("--dist", required=True, help="directory with tellproof-agent-<os>-<arch>[.exe] binaries")
     ap.add_argument("--version", required=True, help="the release version without the v, e.g. 0.2.0")
     ap.add_argument("--out", required=True)
     ap.add_argument("--license", default="LICENSE")
@@ -142,7 +142,7 @@ def main(argv=None) -> int:
     lic = Path(a.license).read_bytes()
     built = 0
     for (goos, goarch) in PLATFORMS:
-        b = Path(a.dist) / f"plumbline-agent-{goos}-{goarch}{'.exe' if goos == 'windows' else ''}"
+        b = Path(a.dist) / f"tellproof-agent-{goos}-{goarch}{'.exe' if goos == 'windows' else ''}"
         if not b.exists():
             print(f"build_wheels: missing {b}", file=sys.stderr)
             return 1

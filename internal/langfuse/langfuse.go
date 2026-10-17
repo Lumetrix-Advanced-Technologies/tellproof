@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
 )
 
 const (
@@ -186,10 +186,10 @@ func (p *Puller) span(o observation) (otlp.Span, bool) {
 		attrs["gen_ai.usage.output_tokens"] = *o.OutputUsage
 	}
 	if o.PromptName != nil && *o.PromptName != "" {
-		attrs["plumbline.prompt.name"] = *o.PromptName
+		attrs["tellproof.prompt.name"] = *o.PromptName
 	}
 	if o.PromptVersion != nil {
-		attrs["plumbline.prompt.version"] = strconv.FormatInt(*o.PromptVersion, 10)
+		attrs["tellproof.prompt.version"] = strconv.FormatInt(*o.PromptVersion, 10)
 	}
 	content := present(o.Input) || present(o.Output)
 	return p.Mapping.Build(strings.ToLower(o.TraceID), o.StartTime, attrs, resource, strings.EqualFold(o.Level, "ERROR"), content)
@@ -352,7 +352,7 @@ func (p *Puller) get(ctx context.Context, u string, v any) error {
 			return err
 		}
 		req.SetBasicAuth(p.PublicKey, p.SecretKey)
-		req.Header.Set("User-Agent", "plumbline-agent")
+		req.Header.Set("User-Agent", "tellproof-agent")
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("langfuse: %s: %w", path, err)

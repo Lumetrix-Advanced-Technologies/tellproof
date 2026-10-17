@@ -21,7 +21,7 @@ const { pathToFileURL } = require('node:url');
 const core = require('./core.cjs');
 
 const { A } = core;
-const MARK = Symbol.for('plumbline.wrapped');
+const MARK = Symbol.for('tellproof.wrapped');
 let streamUsage = false;
 
 function int(v) {
@@ -200,7 +200,7 @@ function begin(start, self, args) {
 }
 
 function wrapCall(orig, start, done, rewrite = null) {
-  return function plumblineWrapped(...args) {
+  return function tellproofWrapped(...args) {
     const call = begin(start, this, args);
     if (call === null) return orig.apply(this, args);
     if (rewrite) {
@@ -433,7 +433,7 @@ function wrapSend(orig, mod) {
       guarded = input.guardrailConfig !== undefined || input.guardrailIdentifier !== undefined;
       call = new Call('aws.bedrock', input.modelId, 'chat');
       if (kind === 'invoke' && command.middlewareStack && typeof command.middlewareStack.add === 'function') {
-        command.middlewareStack.add(headerMiddleware(call), { step: 'deserialize', name: 'plumblineTokenCounts', override: true });
+        command.middlewareStack.add(headerMiddleware(call), { step: 'deserialize', name: 'tellproofTokenCounts', override: true });
       }
     } catch (e) {
       core.fail('bedrock start', e);

@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/spec"
-	specdata "github.com/lumetrix-advanced-technologies/plumbline/spec"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/spec"
+	specdata "github.com/lumetrix-advanced-technologies/tellproof/spec"
 )
 
-// piiValues are the plumbline.data_class values that mark personal data (D-020).
+// piiValues are the tellproof.data_class values that mark personal data (D-020).
 func piiValues() []string { return []string{"personal"} }
 
 // Mapping is a validated semconv map, ready for lookups.

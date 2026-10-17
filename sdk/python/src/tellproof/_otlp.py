@@ -41,6 +41,6 @@ def encode(spans: list, resource: dict, scope_version: str) -> bytes:
         out.append(span)
     req = {"resourceSpans": [{
         "resource": {"attributes": _attrs(resource)},
-        "scopeSpans": [{"scope": {"name": "plumbline", "version": scope_version}, "spans": out}],
+        "scopeSpans": [{"scope": {"name": "tellproof", "version": scope_version}, "spans": out}],
     }]}
     return json.dumps(req, separators=(",", ":"), ensure_ascii=False).encode()

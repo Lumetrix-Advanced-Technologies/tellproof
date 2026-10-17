@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batchsign"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batchsign"
 )
 
 // ErrRefused: the server refused a batch in a way retrying cannot fix (bad

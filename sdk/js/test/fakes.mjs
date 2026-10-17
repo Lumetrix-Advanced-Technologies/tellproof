@@ -247,7 +247,7 @@ function pkg(root, name, source, cjsExports, esmExports) {
 
 // Writes the three fake packages into a new temporary app directory.
 export function fakeApp(marker = 'CONTENT-MARKER') {
-  const root = mkdtempSync(join(tmpdir(), 'plumbline-fakes-'));
+  const root = mkdtempSync(join(tmpdir(), 'tellproof-fakes-'));
   pkg(root, 'openai', openaiSource(marker), 'module.exports = OpenAI;', 'export { OpenAI, AzureOpenAI, APIError, Stream };\nexport default OpenAI;');
   pkg(root, '@anthropic-ai/sdk', anthropicSource(marker), 'module.exports = Anthropic;', 'export { Anthropic, AnthropicBedrock, APIError };\nexport default Anthropic;');
   pkg(root, '@aws-sdk/client-bedrock-runtime', bedrockSource(marker), `module.exports = { ${BEDROCK_EXPORTS} };`, `export { ${BEDROCK_EXPORTS} };`);

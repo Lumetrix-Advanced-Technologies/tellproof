@@ -1,0 +1,60 @@
+{
+  "organisation": "Wren Health Pty Ltd (fictional)",
+  "ai_system": "Referral Summariser",
+  "environment": "production",
+  "description": "LLM feature that summarises GP referral letters for specialist triage.",
+  "profiles": [
+    "Enterprise AI security review"
+  ],
+  "timezone": "Australia/Sydney",
+  "period": {
+    "start": "2026-09-01",
+    "end": "2026-09-30"
+  },
+  "declared_models": [
+    {
+      "provider": "aws.bedrock",
+      "model": "anthropic.claude-sonnet-4-5",
+      "role": "summary drafting"
+    },
+    {
+      "provider": "aws.bedrock",
+      "model": "anthropic.claude-sonnet-4-6",
+      "role": "summary drafting"
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "role": "retrieval embeddings"
+    }
+  ],
+  "declared_regions": [
+    "ap-southeast-2"
+  ],
+  "providers": {
+    "aws.bedrock": "AWS Bedrock",
+    "openai": "OpenAI"
+  },
+  "sources": [
+    {
+      "kind": "traces",
+      "system": "OpenTelemetry collector export (OTLP JSON)",
+      "method": "Hourly aggregates only; content dropped at parse"
+    },
+    {
+      "kind": "provider_usage",
+      "system": "AWS Bedrock CloudWatch (ap-southeast-2)",
+      "method": "Token counts by ModelId"
+    },
+    {
+      "kind": "provider_usage",
+      "system": "OpenAI Usage API",
+      "method": "Embeddings usage by project"
+    },
+    {
+      "kind": "registers",
+      "system": "Vendor change, incident and eval registers",
+      "method": "CSV export"
+    }
+  ]
+}

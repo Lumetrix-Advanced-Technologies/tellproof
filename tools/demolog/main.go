@@ -15,13 +15,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batchsign"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/commitment"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/localreport"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/queue"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batchsign"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/commitment"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/localreport"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/queue"
 )
 
 type model struct {
@@ -106,6 +106,15 @@ func write(dir string, days int, rng *rand.Rand) error {
 		m.Agent = batch.AgentCounts{Runs: m.Guardrails.LLMCalls / 4, ToolCalls: m.Guardrails.LLMCalls / 3, ToolErrors: int64(rng.IntN(4)),
 			HighImpactCalls: m.Guardrails.LLMCalls / 40, Escalations: int64(rng.IntN(2))}
 		m.Agent.HighImpactApproved = m.Agent.HighImpactCalls
+		// Hourly guardrail canaries (D-057); during the deploy without the
+		// guardrail the injection and jailbreak probes get through.
+		for _, kind := range []string{"jailbreak", "pii", "prompt_injection", "secret"} {
+			c := batch.Canary{Kind: kind, Run: 1, Caught: 1}
+			if cover < 0.85 && (kind == "jailbreak" || kind == "prompt_injection") {
+				c.Caught = 0
+			}
+			m.Canaries = append(m.Canaries, c)
+		}
 		if cover < 0.85 {
 			m.Anomalies = append(m.Anomalies, batch.Anomaly{Start: h.Format(time.RFC3339), End: h.Add(time.Hour).Format(time.RFC3339), Kind: "guardrail_rate"})
 		}

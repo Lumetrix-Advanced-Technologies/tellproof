@@ -28,7 +28,7 @@ func (id *Identity) IsLocal() bool {
 }
 
 // ErrNotLocal is a data directory already enrolled with a server.
-var ErrNotLocal = errors.New("enrol: this data directory is enrolled with a Plumbline server; use another data directory for local mode")
+var ErrNotLocal = errors.New("enrol: this data directory is enrolled with a Tellproof server; use another data directory for local mode")
 
 // LocalIdentity returns the data directory's local-mode identity, creating
 // one (a fresh Ed25519 key, no server, no token) the first time. Its agent ID

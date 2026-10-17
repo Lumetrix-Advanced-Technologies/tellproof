@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lumetrix.example/plumbline/schema/pack-predicate-v0.1.json",
-  "title": "Plumbline pack predicate v0.1",
+  "title": "Tellproof pack predicate v0.1",
   "type": "object",
   "required": [
     "pack_schema",

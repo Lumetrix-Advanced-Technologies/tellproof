@@ -199,8 +199,8 @@ func TestParseValueForms(t *testing.T) {
 		`{"key":"gen_ai.operation.name","value":{"stringValue":"chat"}}`,
 		`{"key":"gen_ai.usage.input_tokens","value":{"intValue":"9007199254740991"}}`,
 		`{"key":"gen_ai.usage.output_tokens","value":{"doubleValue":12.0}}`,
-		`{"key":"plumbline.tool.high_impact","value":{"stringValue":"TRUE"}}`,
-		`{"key":"plumbline.redaction.applied","value":{"intValue":1}}`,
+		`{"key":"tellproof.tool.high_impact","value":{"stringValue":"TRUE"}}`,
+		`{"key":"tellproof.redaction.applied","value":{"intValue":1}}`,
 		`{"key":"gen_ai.request.model","value":{"intValue":5}}`,
 	}, ",")
 	res, err := Parse(spanJSON(attrs, ""), m)

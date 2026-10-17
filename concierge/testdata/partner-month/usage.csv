@@ -1,0 +1,6 @@
+provider,model,region,start,end,input_tokens,output_tokens,requests
+aws.bedrock,anthropic.claude-sonnet-4-5,ap-southeast-2,2026-08-31T10:00:00Z,2026-08-31T11:00:00Z,999999,999999,999
+aws.bedrock,anthropic.claude-sonnet-4-5,ap-southeast-2,2026-09-02T00:00:00Z,2026-09-02T01:00:00Z,610000,152000,1010
+aws.bedrock,anthropic.claude-sonnet-4-6,ap-southeast-2,2026-09-10T00:00:00Z,2026-09-11T00:00:00Z,410000,102000,805
+aws.bedrock,anthropic.claude-sonnet-4-6,ap-southeast-2,2026-09-27T22:00:00Z,2026-09-27T23:00:00Z,530000,101000,705
+openai,text-embedding-3-small,us-east-1,2026-09-01T00:00:00Z,2026-10-01T00:00:00Z,81000,0,800

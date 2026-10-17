@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/usage"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/usage"
 )
 
 // newBedrock reads AWS credentials the standard way (environment, shared

@@ -8,7 +8,7 @@ function httpTransport(url, timeoutMs = 3000) {
   return async (body) => {
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'plumbline-js' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'tellproof-js' },
       body,
       signal: AbortSignal.timeout(timeoutMs),
     });

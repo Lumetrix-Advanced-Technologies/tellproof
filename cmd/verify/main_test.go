@@ -13,6 +13,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/cievidence"
 )
 
 func vec(name string) string { return filepath.Join("..", "..", "spec", "vectors", name) }
@@ -213,7 +216,7 @@ func normJSON(t *testing.T, v any) string {
 
 func TestVersion(t *testing.T) {
 	code, out, _ := runCLI(t, "--version")
-	if code != 0 || out != "plumbline-verify v0.1.0-test\n" {
+	if code != 0 || out != "tellproof-verify v0.1.0-test\n" {
 		t.Errorf("--version = exit %d, %q", code, out)
 	}
 }
@@ -343,5 +346,38 @@ func TestChainBreaksAfterAFileThatIsNotAPack(t *testing.T) {
 	}
 	if last := report.Packs[2]; last.Chain == nil || *last.Chain || last.Verified {
 		t.Errorf("pack after the junk file: chain %v verified %v; want chain false, not verified", last.Chain, last.Verified)
+	}
+}
+
+// tellproof-verify ci checks a CI evidence statement (D-058).
+func TestVerifyCI(t *testing.T) {
+	dir := t.TempDir()
+	privPEM, pubPEM, _ := cievidence.NewKey()
+	priv, _ := cievidence.ParsePrivate(privPEM)
+	commit := strings.Repeat("ab", 20)
+	st := cievidence.NewStatement("git+https://github.com/acme/app", commit, "refs/heads/main", cievidence.Run{Provider: "local"},
+		[]cievidence.Gate{{Name: "tests", Passed: true, JUnit: &cievidence.JUnit{Tests: 5}}},
+		[]cievidence.Gate{{Name: "tests", Canary: true, Passed: true, ExitCode: 1}}, nil, "test", time.Unix(0, 0))
+	env, err := cievidence.Sign(context.Background(), st, priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(env)
+	stmt, pub := filepath.Join(dir, "ci.json"), filepath.Join(dir, "ci.pub")
+	_ = os.WriteFile(stmt, b, 0o644)
+	_ = os.WriteFile(pub, pubPEM, 0o644)
+	ci := func(args ...string) (int, string) {
+		var out, errb bytes.Buffer
+		code := run(context.Background(), config{}, append([]string{"ci"}, args...), &out, &errb)
+		return code, out.String() + errb.String()
+	}
+	if code, out := ci("--pub", pub, "--commit", commit[:10], "--require", "tests", "--canary", "tests", stmt); code != 0 || !strings.Contains(out, "signature verified") {
+		t.Fatalf("%d %s", code, out)
+	}
+	if code, _ := ci("--pub", pub, "--commit", commit, "--require", "lint", stmt); code != 1 {
+		t.Error("a missing gate passed")
+	}
+	if code, _ := ci("--commit", commit, stmt); code != 2 {
+		t.Error("no key and not --unsigned")
 	}
 }

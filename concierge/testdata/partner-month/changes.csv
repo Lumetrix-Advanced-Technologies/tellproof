@@ -1,0 +1,4 @@
+date,kind,what
+2026-08-25,prompt,Prompt v14 released (before this period)
+2026-09-10,model,Summary model moved from Claude Sonnet 4.5 to 4.6
+2026-09-15,guardrail,Guardrail policy gp-2026.09 enabled for referral attachments

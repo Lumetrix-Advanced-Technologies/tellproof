@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url);
 const core = require('../lib/core.cjs');
 const otlp = require('../lib/otlp.cjs');
 const ins = require('../lib/instrument.cjs');
-const plumbline = require('../lib/index.cjs');
+const tellproof = require('../lib/index.cjs');
 const { Exporter } = require('../lib/export.cjs');
 
 const MARKER = 'CONTENT-MARKER-\u00e9"\\</';
@@ -48,7 +48,7 @@ const a = (s) => s.attrs;
 const tokens = () => cap.spans.map((s) => [a(s)['gen_ai.usage.input_tokens'], a(s)['gen_ai.usage.output_tokens']]);
 function facts(s) {
   const m = { provider: 'gen_ai.provider.name', op: 'gen_ai.operation.name', model: 'gen_ai.request.model', response: 'gen_ai.response.model',
-    region: 'cloud.region', input: 'gen_ai.usage.input_tokens', output: 'gen_ai.usage.output_tokens', guardrail: 'plumbline.guardrail.decision' };
+    region: 'cloud.region', input: 'gen_ai.usage.input_tokens', output: 'gen_ai.usage.output_tokens', guardrail: 'tellproof.guardrail.decision' };
   return Object.fromEntries(Object.entries(m).filter(([, k]) => k in s.attrs).map(([n, k]) => [n, s.attrs[k]]));
 }
 
@@ -189,21 +189,21 @@ test('bedrock: guardrails, streams, invoke headers, other commands, callbacks', 
   await c.send(new B.ListFoundationModelsCommand({}));
   await new B.BedrockRuntime().converse({ modelId: 'agg', messages: [] });
   await new Promise((resolve) => c.send(new B.ConverseCommand({ modelId: 'cb', messages: [] }), () => resolve())); // callback style: untouched
-  assert.deepEqual(cap.spans.map((s) => a(s)['plumbline.guardrail.decision'] ?? null), [null, 'allow', 'block', 'block', null, null, null]);
+  assert.deepEqual(cap.spans.map((s) => a(s)['tellproof.guardrail.decision'] ?? null), [null, 'allow', 'block', 'block', null, null, null]);
   assert.deepEqual(tokens(), [[50, 9], [50, 9], [50, 9], [50, 9], [42, 7], [undefined, undefined], [50, 9]]);
 });
 
 test("a provider's block beats an enclosing guardrail scope", async () => {
   const B = cjs.bedrock;
-  await plumbline.guardrail('flag', () => new B.BedrockRuntimeClient().send(new B.ConverseCommand({ modelId: 'm', guardrailConfig: {}, _intervene: true })));
-  assert.equal(a(cap.spans[0])['plumbline.guardrail.decision'], 'block');
+  await tellproof.guardrail('flag', () => new B.BedrockRuntimeClient().send(new B.ConverseCommand({ modelId: 'm', guardrailConfig: {}, _intervene: true })));
+  assert.equal(a(cap.spans[0])['tellproof.guardrail.decision'], 'block');
 });
 
 test('calls carry their scopes; a stream read after the scopes ended keeps them', async () => {
   let stream;
-  await plumbline.agentRun('claims', () =>
-    plumbline.prompt('triage', '3', () =>
-      plumbline.guardrail(async (g) => {
+  await tellproof.agentRun('claims', () =>
+    tellproof.prompt('triage', '3', () =>
+      tellproof.guardrail(async (g) => {
         stream = await new cjs.openai.OpenAI().chat.completions.create({ model: 'm', messages: [], stream: true });
         g.allow();
       }),
@@ -214,12 +214,12 @@ test('calls carry their scopes; a stream read after the scopes ended keeps them'
   const [run, call] = cap.spans;
   assert.equal(call.traceId, run.traceId);
   assert.equal(call.parent, run.spanId);
-  assert.deepEqual([a(call)['gen_ai.agent.name'], a(call)['plumbline.prompt.version'], a(call)['plumbline.guardrail.decision']], ['claims', '3', 'allow']);
+  assert.deepEqual([a(call)['gen_ai.agent.name'], a(call)['tellproof.prompt.version'], a(call)['tellproof.guardrail.decision']], ['claims', '3', 'allow']);
 });
 
 test('installing twice wraps once; explicit instrument() works', async () => {
   ins.install();
-  assert.deepEqual(plumbline.instrument({ openai: cjs.openai, anthropic: cjs.anthropic.Anthropic, bedrock: esm.bedrock }).sort(), ['anthropic', 'bedrock', 'openai']);
+  assert.deepEqual(tellproof.instrument({ openai: cjs.openai, anthropic: cjs.anthropic.Anthropic, bedrock: esm.bedrock }).sort(), ['anthropic', 'bedrock', 'openai']);
   await new cjs.openai.OpenAI().chat.completions.create({ model: 'm', messages: [] });
   assert.equal(cap.spans.length, 1);
 });

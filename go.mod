@@ -1,4 +1,4 @@
-module github.com/lumetrix-advanced-technologies/plumbline
+module github.com/lumetrix-advanced-technologies/tellproof
 
 go 1.26.0
 

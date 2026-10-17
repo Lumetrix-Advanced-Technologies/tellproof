@@ -1,0 +1,255 @@
+{
+  "schema": "plumbline-concierge-aggregates/v0.1",
+  "semconv_map": "v1",
+  "source": {
+    "kind": "otlp",
+    "files": [
+      {
+        "name": "hand-written fixture",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  },
+  "windows": [
+    {
+      "window": {
+        "start": "2026-09-02T00:00:00Z",
+        "end": "2026-09-02T01:00:00Z"
+      },
+      "metrics": {
+        "tokens": [
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-5",
+            "region": "ap-southeast-2",
+            "input_tokens": 600000,
+            "output_tokens": 150000,
+            "calls": 1000
+          },
+          {
+            "provider": "openai",
+            "model": "text-embedding-3-small",
+            "region": "us-east-1",
+            "input_tokens": 50000,
+            "output_tokens": 0,
+            "calls": 500
+          }
+        ],
+        "pii": {
+          "pii_spans": 200,
+          "pii_spans_redacted": 200
+        },
+        "content_present_spans": 0,
+        "guardrails": {
+          "llm_calls": 1500,
+          "guarded_calls": 1497,
+          "blocked": 6
+        },
+        "evals": [],
+        "agent": {
+          "runs": 400,
+          "tool_calls": 1000,
+          "tool_errors": 11,
+          "high_impact_calls": 20,
+          "high_impact_approved": 20,
+          "escalations": 12
+        },
+        "transitions": [],
+        "anomalies": [],
+        "late_spans": 0
+      },
+      "observed": {
+        "models": [
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-5"
+          },
+          {
+            "provider": "openai",
+            "model": "text-embedding-3-small"
+          }
+        ],
+        "versions": [
+          {
+            "model": "anthropic.claude-sonnet-4-5",
+            "prompt_version": "14"
+          }
+        ]
+      },
+      "commit": {
+        "root": "1111111111111111111111111111111111111111111111111111111111111111",
+        "leaves": 400
+      }
+    },
+    {
+      "window": {
+        "start": "2026-09-10T03:00:00Z",
+        "end": "2026-09-10T04:00:00Z"
+      },
+      "metrics": {
+        "tokens": [
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-5",
+            "region": "ap-southeast-2",
+            "input_tokens": 100000,
+            "output_tokens": 25000,
+            "calls": 200
+          },
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-6",
+            "region": "ap-southeast-2",
+            "input_tokens": 300000,
+            "output_tokens": 75000,
+            "calls": 600
+          },
+          {
+            "provider": "openai",
+            "model": "text-embedding-3-small",
+            "region": "us-east-1",
+            "input_tokens": 30000,
+            "output_tokens": 0,
+            "calls": 300
+          }
+        ],
+        "pii": {
+          "pii_spans": 100,
+          "pii_spans_redacted": 100
+        },
+        "content_present_spans": 2,
+        "guardrails": {
+          "llm_calls": 1100,
+          "guarded_calls": 1099,
+          "blocked": 3
+        },
+        "evals": [],
+        "agent": {
+          "runs": 300,
+          "tool_calls": 800,
+          "tool_errors": 9,
+          "high_impact_calls": 10,
+          "high_impact_approved": 10,
+          "escalations": 8
+        },
+        "transitions": [
+          {
+            "at": "2026-09-10T03:20:00Z",
+            "kind": "model",
+            "from": "anthropic.claude-sonnet-4-5",
+            "to": "anthropic.claude-sonnet-4-6"
+          }
+        ],
+        "anomalies": [
+          {
+            "start": "2026-09-10T03:00:00Z",
+            "end": "2026-09-10T04:00:00Z",
+            "kind": "guardrail_rate"
+          }
+        ],
+        "late_spans": 0
+      },
+      "observed": {
+        "models": [
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-5"
+          },
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-6"
+          },
+          {
+            "provider": "openai",
+            "model": "text-embedding-3-small"
+          }
+        ],
+        "versions": [
+          {
+            "model": "anthropic.claude-sonnet-4-5",
+            "prompt_version": "14"
+          },
+          {
+            "model": "anthropic.claude-sonnet-4-6",
+            "prompt_version": "14"
+          }
+        ]
+      },
+      "commit": {
+        "root": "2222222222222222222222222222222222222222222222222222222222222222",
+        "leaves": 300
+      }
+    },
+    {
+      "window": {
+        "start": "2026-09-27T22:00:00Z",
+        "end": "2026-09-27T23:00:00Z"
+      },
+      "metrics": {
+        "tokens": [
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-6",
+            "region": "ap-southeast-2",
+            "input_tokens": 500000,
+            "output_tokens": 100000,
+            "calls": 700
+          }
+        ],
+        "pii": {
+          "pii_spans": 50,
+          "pii_spans_redacted": 50
+        },
+        "content_present_spans": 0,
+        "guardrails": {
+          "llm_calls": 700,
+          "guarded_calls": 700,
+          "blocked": 1
+        },
+        "evals": [],
+        "agent": {
+          "runs": 200,
+          "tool_calls": 700,
+          "tool_errors": 9,
+          "high_impact_calls": 5,
+          "high_impact_approved": 5,
+          "escalations": 4
+        },
+        "transitions": [
+          {
+            "at": "2026-09-27T22:10:00Z",
+            "kind": "prompt",
+            "from": "14",
+            "to": "15"
+          }
+        ],
+        "anomalies": [
+          {
+            "start": "2026-09-27T22:00:00Z",
+            "end": "2026-09-27T23:00:00Z",
+            "kind": "error_rate"
+          }
+        ],
+        "late_spans": 0
+      },
+      "observed": {
+        "models": [
+          {
+            "provider": "aws.bedrock",
+            "model": "anthropic.claude-sonnet-4-6"
+          }
+        ],
+        "versions": [
+          {
+            "model": "anthropic.claude-sonnet-4-6",
+            "prompt_version": "15"
+          }
+        ]
+      },
+      "commit": {
+        "root": "3333333333333333333333333333333333333333333333333333333333333333",
+        "leaves": 200
+      }
+    }
+  ]
+}

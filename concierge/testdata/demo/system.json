@@ -1,0 +1,21 @@
+{
+  "organisation": "Kestrel Assist Pty Ltd (fictional)",
+  "ai_system": "Claims Triage Agent",
+  "environment": "production",
+  "description": "Demo system for the README walkthrough: two hours of synthetic traffic from ../otlp-sample.jsonl.",
+  "profiles": ["Enterprise AI security review"],
+  "timezone": "Australia/Sydney",
+  "period": {"start": "2026-09-01", "end": "2026-09-01"},
+  "declared_models": [
+    {"provider": "aws.bedrock", "model": "anthropic.claude-sonnet-4-5", "role": "triage and reply drafting"},
+    {"provider": "aws.bedrock", "model": "anthropic.claude-sonnet-4-6", "role": "triage and reply drafting"},
+    {"provider": "openai", "model": "gpt-4.1-mini", "role": "claim classification"}
+  ],
+  "declared_regions": ["ap-southeast-2", "us-east-1"],
+  "providers": {"aws.bedrock": "AWS Bedrock", "openai": "OpenAI"},
+  "sources": [
+    {"kind": "traces", "system": "OpenTelemetry collector export (OTLP JSON)", "method": "Hourly aggregates only; content dropped at parse"},
+    {"kind": "provider_usage", "system": "AWS Bedrock CloudWatch and OpenAI Usage API", "method": "Token counts by model"},
+    {"kind": "registers", "system": "Vendor change register", "method": "CSV export"}
+  ]
+}

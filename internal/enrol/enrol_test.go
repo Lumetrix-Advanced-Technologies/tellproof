@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/dsse"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/dsse"
 )
 
 type fakeServer struct {
@@ -107,7 +107,7 @@ func TestEnrolFailuresLeaveNothingBehindAndNeverEchoTheToken(t *testing.T) {
 }
 
 func TestEnrolRequiresHTTPSExceptLocalhost(t *testing.T) {
-	_, err := Enrol(context.Background(), Options{Server: "http://plumbline.example", Token: "t", DataDir: t.TempDir()})
+	_, err := Enrol(context.Background(), Options{Server: "http://tellproof.example", Token: "t", DataDir: t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), "https") {
 		t.Errorf("plain http to a remote host: %v", err)
 	}

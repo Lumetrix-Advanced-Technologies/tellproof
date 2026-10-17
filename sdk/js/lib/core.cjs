@@ -24,14 +24,14 @@ const A = {
   REGION: 'cloud.region',
   AGENT_NAME: 'gen_ai.agent.name',
   TOOL_NAME: 'gen_ai.tool.name',
-  PROMPT_NAME: 'plumbline.prompt.name',
-  PROMPT_VERSION: 'plumbline.prompt.version',
-  DATA_CLASS: 'plumbline.data_class',
-  REDACTED: 'plumbline.redaction.applied',
-  GUARDRAIL: 'plumbline.guardrail.decision',
-  HIGH_IMPACT: 'plumbline.tool.high_impact',
-  APPROVED: 'plumbline.tool.approved',
-  ESCALATION: 'plumbline.escalation',
+  PROMPT_NAME: 'tellproof.prompt.name',
+  PROMPT_VERSION: 'tellproof.prompt.version',
+  DATA_CLASS: 'tellproof.data_class',
+  REDACTED: 'tellproof.redaction.applied',
+  GUARDRAIL: 'tellproof.guardrail.decision',
+  HIGH_IMPACT: 'tellproof.tool.high_impact',
+  APPROVED: 'tellproof.tool.approved',
+  ESCALATION: 'tellproof.escalation',
 };
 
 const KIND_INTERNAL = 1;
@@ -78,7 +78,7 @@ function setDebug(on) {
 
 function fail(where, err) {
   client.stats.instrumentationErrors++;
-  if (debug) console.debug(`plumbline: internal error in ${where}:`, err && err.name);
+  if (debug) console.debug(`tellproof: internal error in ${where}:`, err && err.name);
 }
 
 // A helper's name or version: a short string, or null (ignored).
@@ -426,7 +426,7 @@ function llmCall(opts, fn) {
 function escalation() {
   try {
     const now = client.clock();
-    record('plumbline.escalation', KIND_INTERNAL, now, now, { [A.ESCALATION]: true }, false);
+    record('tellproof.escalation', KIND_INTERNAL, now, now, { [A.ESCALATION]: true }, false);
   } catch (e) {
     fail('escalation', e);
   }

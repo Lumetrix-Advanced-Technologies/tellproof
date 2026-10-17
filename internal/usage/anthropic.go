@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
 )
 
 // Anthropic polls the Usage and Cost Admin API (messages usage report) with an
@@ -74,7 +74,7 @@ func (a *Anthropic) Poll(ctx context.Context, start, end time.Time) ([]HourUsage
 		}
 		req.Header.Set("x-api-key", a.AdminKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
-		req.Header.Set("User-Agent", "plumbline-agent")
+		req.Header.Set("User-Agent", "tellproof-agent")
 		var p anthropicPage
 		if err := getJSON(ctx, a.HTTP, req, &p); err != nil {
 			return nil, err

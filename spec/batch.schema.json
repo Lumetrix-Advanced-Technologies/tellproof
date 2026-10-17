@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lumetrix.example/plumbline/schema/batch-v0.2.json",
-  "title": "Plumbline agent batch payload v0.2",
+  "title": "Tellproof agent batch payload v0.2",
   "type": "object",
   "required": [
     "schema",

@@ -22,7 +22,7 @@ def http_transport(url: str, timeout: float = 3.0) -> Transport:
 
     def send(body: bytes) -> None:
         req = urllib.request.Request(url, data=body, method="POST",
-                                     headers={"Content-Type": "application/json", "User-Agent": "plumbline-python"})
+                                     headers={"Content-Type": "application/json", "User-Agent": "tellproof-python"})
         with opener.open(req, timeout=timeout) as resp:
             resp.read(1 << 16)
             if resp.status // 100 != 2:
@@ -62,7 +62,7 @@ class Exporter:
                 return
             self._buf.append(span)
             if self._thread is None:  # started lazily, so preforking servers fork first
-                self._thread = threading.Thread(target=self._run, name="plumbline-exporter", daemon=True)
+                self._thread = threading.Thread(target=self._run, name="tellproof-exporter", daemon=True)
                 self._thread.start()
             if len(self._buf) >= self._batch_size:
                 self._cond.notify()

@@ -1,6 +1,6 @@
 {
-  "server": "https://api.plumbline.example",
-  "data_dir": "./.plumbline-agent",
+  "server": "https://api.tellproof.example",
+  "data_dir": "./.tellproof-agent",
   "otlp_listen": "127.0.0.1:4318",
   "langfuse": {
     "enabled": false,
@@ -25,7 +25,7 @@
       "region": "ap-southeast-2"
     }
   },
-  "salt_secret_env": "PLUMBLINE_SALT_SECRET",
+  "salt_secret_env": "TELLPROOF_SALT_SECRET",
   "salt_secret_file": "",
   "aggregation": {
     "grace_minutes": 5,

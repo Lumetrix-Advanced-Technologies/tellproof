@@ -36,7 +36,7 @@ func TestLocalIdentityRefusesAnEnrolledDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Pretend a server enrolled this directory.
-	_ = os.WriteFile(filepath.Join(dir, IdentityFile), []byte(`{"agent_id": "agt_0123456789abcdef", "server": "https://plumbline.example"}`), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, IdentityFile), []byte(`{"agent_id": "agt_0123456789abcdef", "server": "https://tellproof.example"}`), 0o600)
 	if _, err := LocalIdentity(dir); !errors.Is(err, ErrNotLocal) {
 		t.Fatalf("enrolled directory: %v", err)
 	}

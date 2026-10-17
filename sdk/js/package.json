@@ -1,7 +1,7 @@
 {
-  "name": "plumbline-sdk",
-  "version": "0.1.0",
-  "description": "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Plumbline agent.",
+  "name": "tellproof",
+  "version": "0.2.0",
+  "description": "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Tellproof agent.",
   "main": "./lib/index.cjs",
   "module": "./lib/index.mjs",
   "types": "./lib/index.d.ts",
@@ -19,5 +19,5 @@
   "sideEffects": false,
   "dependencies": {},
   "scripts": { "test": "node --test test/sdk.test.mjs test/instrument.test.mjs test/real-libs.test.mjs" },
-  "repository": { "type": "git", "url": "git+https://github.com/Lumetrix-Advanced-Technologies/plumbline.git", "directory": "sdk/js" }
+  "repository": { "type": "git", "url": "git+https://github.com/Lumetrix-Advanced-Technologies/tellproof.git", "directory": "sdk/js" }
 }

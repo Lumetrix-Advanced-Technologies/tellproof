@@ -1,4 +1,4 @@
-// Package pack decodes and verifies Plumbline evidence packs: in-toto
+// Package pack decodes and verifies Tellproof evidence packs: in-toto
 // statements in DSSE envelopes, chained by digest, with a disclosed trace
 // proven against the pack's Merkle commitment (docs/architecture.md §2).
 package pack
@@ -13,9 +13,9 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/dsse"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/jcs"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/merkle"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/dsse"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/jcs"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/merkle"
 )
 
 // Result is the outcome of every check, in the shape of manifest.json's

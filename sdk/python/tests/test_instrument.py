@@ -9,9 +9,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 sys.path.insert(0, HERE)
 
-import plumbline  # noqa: E402
-from plumbline import _core, _instrument, _otlp  # noqa: E402
-from plumbline._export import Exporter  # noqa: E402
+import tellproof  # noqa: E402
+from tellproof import _core, _instrument, _otlp  # noqa: E402
+from tellproof._export import Exporter  # noqa: E402
 import fakes  # noqa: E402
 import scenario  # noqa: E402
 
@@ -50,7 +50,7 @@ class Instrumented(unittest.TestCase):
 
 def facts(attrs):
     keys = ("gen_ai.provider.name", "gen_ai.operation.name", "gen_ai.request.model", "gen_ai.response.model",
-            "cloud.region", "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "plumbline.guardrail.decision")
+            "cloud.region", "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "tellproof.guardrail.decision")
     return {k.rsplit(".", 1)[-1] if k != "gen_ai.provider.name" else "provider": attrs[k] for k in keys if k in attrs}
 
 
@@ -226,12 +226,12 @@ class BedrockTest(Instrumented):
         c.converse(modelId="m", messages=[], guardrailConfig={"guardrailIdentifier": "g"}, _intervene=True)
         for _ in c.converse_stream(modelId="m", messages=[], guardrailConfig={}, _intervene=True)["stream"]:
             pass
-        self.assertEqual([s["attrs"].get("plumbline.guardrail.decision") for s in self.spans], [None, "allow", "block", "block"])
+        self.assertEqual([s["attrs"].get("tellproof.guardrail.decision") for s in self.spans], [None, "allow", "block", "block"])
 
     def test_a_provider_block_beats_an_enclosing_scope(self):
-        with plumbline.guardrail("flag"):
+        with tellproof.guardrail("flag"):
             self.bedrock().converse(modelId="m", messages=[], guardrailConfig={}, _intervene=True)
-        self.assertEqual(self.only()[0]["plumbline.guardrail.decision"], "block")
+        self.assertEqual(self.only()[0]["tellproof.guardrail.decision"], "block")
 
     def test_stream_invoke_and_other_services(self):
         c = self.bedrock()
@@ -254,8 +254,8 @@ class BedrockTest(Instrumented):
 
 class ScopeTest(Instrumented):
     def test_calls_carry_scopes_and_late_streams_keep_their_context(self):
-        with plumbline.agent_run("claims"), plumbline.prompt("triage", "3"):
-            with plumbline.guardrail() as g:
+        with tellproof.agent_run("claims"), tellproof.prompt("triage", "3"):
+            with tellproof.guardrail() as g:
                 stream = self.openai().chat.completions.create(model="m", messages=[], stream=True)
                 g.allow()
         self.assertEqual(len(self.spans), 1)  # only the agent run so far
@@ -264,8 +264,8 @@ class ScopeTest(Instrumented):
         call = self.spans[1]
         self.assertEqual(call["trace_id"], self.spans[0]["trace_id"])
         self.assertEqual(call["parent"], self.spans[0]["span_id"])
-        self.assertEqual((call["attrs"]["gen_ai.agent.name"], call["attrs"]["plumbline.prompt.version"],
-                          call["attrs"]["plumbline.guardrail.decision"]), ("claims", "3", "allow"))
+        self.assertEqual((call["attrs"]["gen_ai.agent.name"], call["attrs"]["tellproof.prompt.version"],
+                          call["attrs"]["tellproof.guardrail.decision"]), ("claims", "3", "allow"))
 
     def test_install_twice_wraps_once(self):
         _instrument.install()
@@ -341,12 +341,12 @@ class ShutdownTest(unittest.TestCase):
     def test_init_instruments_and_shutdown_flushes(self):
         sent = []
         with fakes.installed(fakes.make_openai()) as m:
-            self.assertTrue(plumbline.init(transport=sent.append, service="t"))
+            self.assertTrue(tellproof.init(transport=sent.append, service="t"))
             try:
-                self.assertIn("openai", plumbline.stats()["instrumented"])
+                self.assertIn("openai", tellproof.stats()["instrumented"])
                 m["openai"].OpenAI().chat.completions.create(model="m", messages=[])
             finally:
-                self.assertTrue(plumbline.shutdown(5))
+                self.assertTrue(tellproof.shutdown(5))
         spans = [sp for body in sent for sp in json.loads(body)["resourceSpans"][0]["scopeSpans"][0]["spans"]]
         self.assertEqual(len(spans), 1)
 

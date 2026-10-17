@@ -8,9 +8,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"testing"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
 )
 
 var update = flag.Bool("update", false, "rewrite sdk/testdata/expected-windows.json")
@@ -74,19 +75,29 @@ func TestSDKScenarioExports(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	raw, err := os.ReadFile(expectedFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var want []sdkWindow
-	if err := json.Unmarshal(raw, &want); err != nil {
-		t.Fatal(err)
+	// An export from an earlier SDK release (<sdk>-v0.2-export.jsonl, D-056)
+	// must still aggregate to what it did then (expected-windows-v0.2.json).
+	expected := func(path string) (string, []sdkWindow) {
+		name := "expected-windows.json"
+		if m := regexp.MustCompile(`-(v[0-9.]+)-export\.jsonl$`).FindStringSubmatch(path); m != nil {
+			name = "expected-windows-" + m[1] + ".json"
+		}
+		raw, err := os.ReadFile(filepath.Join(sdkData, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var want []sdkWindow
+		if err := json.Unmarshal(raw, &want); err != nil {
+			t.Fatal(err)
+		}
+		return name, want
 	}
 	for _, path := range exports {
 		got := aggregateFile(t, path)
+		name, want := expected(path)
 		if g, w := toMap(t, got), toMap(t, want); !reflect.DeepEqual(g, w) {
 			gb, _ := json.MarshalIndent(got, "", " ")
-			t.Errorf("%s aggregates to\n%s\nwant sdk/testdata/expected-windows.json", filepath.Base(path), gb)
+			t.Errorf("%s aggregates to\n%s\nwant sdk/testdata/%s", filepath.Base(path), gb, name)
 		}
 	}
 
@@ -109,7 +120,7 @@ func TestSDKScenarioExports(t *testing.T) {
 		if err := json.Unmarshal(out, &concierge); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(toMap(t, concierge), toMap(t, want)) {
+		if _, want := expected(path); !reflect.DeepEqual(toMap(t, concierge), toMap(t, want)) {
 			t.Errorf("concierge ingest of %s differs:\n%s", rel, out)
 		}
 	}

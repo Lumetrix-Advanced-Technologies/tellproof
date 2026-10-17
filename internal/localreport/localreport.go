@@ -16,10 +16,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batchsign"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/queue"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batchsign"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/queue"
 )
 
 // Dir is the local evidence log inside the data directory: signed, chained
@@ -65,6 +65,7 @@ type Summary struct {
 	LateSpans      int64                   `json:"late_spans"`
 	Traces         int64                   `json:"traces_committed"`
 	Usage          []batch.Usage           `json:"provider_usage"`
+	Canaries       []batch.Canary          `json:"canaries"` // summed by kind (D-057)
 
 	// Series is one point per window in range, oldest first, with the
 	// additive batches of a window summed (for the dashboard's charts).
@@ -87,6 +88,8 @@ type Point struct {
 	ToolErrors     int64   `json:"tool_errors"`
 	Traces         int64   `json:"traces_committed"`
 	LateSpans      int64   `json:"late_spans"`
+	CanariesRun    int64   `json:"canaries_run"`
+	CanariesCaught int64   `json:"canaries_caught"`
 }
 
 // BatchRow is one batch of the chain.
@@ -115,18 +118,27 @@ func (r Range) has(start string) bool {
 // Read verifies and sums the local evidence log in dataDir. The whole chain
 // is always checked; r only limits which windows are summed.
 func Read(dataDir string, r Range) (*Summary, error) {
+	s, _, err := ReadBatches(dataDir, r)
+	return s, err
+}
+
+// ReadBatches is Read, also returning the batches that verified, in order
+// (all of them when the summary is Verified; those before the first problem
+// otherwise), for the evaluator and the AI-BOM.
+func ReadBatches(dataDir string, r Range) (*Summary, []batch.Batch, error) {
 	agentID, pub, err := enrol.LoadPublic(dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("localreport: %w (is %s a local-mode data directory?)", err, dataDir)
+		return nil, nil, fmt.Errorf("localreport: %w (is %s a local-mode data directory?)", err, dataDir)
 	}
 	q, err := queue.Open(filepath.Join(dataDir, Dir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	seqs, err := q.Pending()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var verified []batch.Batch
 	s := &Summary{AgentID: agentID, Verified: true, Models: []Model{}, Evals: []batch.Eval{}, Transitions: []batch.Transition{},
 		Anomalies: []batch.Anomaly{}, Versions: []batch.ObservedVersion{}, Usage: []batch.Usage{}, Series: []Point{}, Recent: []BatchRow{}}
 	acc := newAccumulator()
@@ -145,6 +157,7 @@ func Read(dataDir string, r Range) (*Summary, error) {
 			break
 		}
 		prev = &digest
+		verified = append(verified, *bt)
 		s.Batches++
 		s.LastSeq, s.LastHash = seq, digest
 		s.Recent = append(s.Recent, BatchRow{Seq: seq, WindowStart: bt.Window.Start, Digest: digest, Traces: bt.Commit.Leaves, LLMCalls: bt.Metrics.Guardrails.LLMCalls})
@@ -161,7 +174,7 @@ func Read(dataDir string, r Range) (*Summary, error) {
 		s.fail(fmt.Sprintf("batch %d is missing (the log has written up to batch %d)", s.LastSeq+1, st.Seq))
 	}
 	acc.finish(s)
-	return s, nil
+	return s, verified, nil
 }
 
 func (s *Summary) fail(problem string) {
@@ -196,10 +209,11 @@ type accumulator struct {
 	usage    map[[3]string]*batch.Usage
 	evals    map[batch.Eval]bool
 	versions map[batch.ObservedVersion]bool
+	canaries map[string]*batch.Canary
 }
 
 func newAccumulator() *accumulator {
-	return &accumulator{points: map[string]*Point{}, models: map[[3]string]*Model{}, usage: map[[3]string]*batch.Usage{}, evals: map[batch.Eval]bool{}, versions: map[batch.ObservedVersion]bool{}}
+	return &accumulator{points: map[string]*Point{}, models: map[[3]string]*Model{}, usage: map[[3]string]*batch.Usage{}, evals: map[batch.Eval]bool{}, versions: map[batch.ObservedVersion]bool{}, canaries: map[string]*batch.Canary{}}
 }
 
 // add sums one batch. Windows are additive (D-032): an hour sent early and
@@ -226,6 +240,15 @@ func (a *accumulator) add(s *Summary, b *batch.Batch) {
 	p.ToolCalls += m.Agent.ToolCalls
 	p.ToolErrors += m.Agent.ToolErrors
 	p.Traces += b.Commit.Leaves
+	for _, c := range m.Canaries {
+		p.CanariesRun += c.Run
+		p.CanariesCaught += c.Caught
+		if a.canaries[c.Kind] == nil {
+			a.canaries[c.Kind] = &batch.Canary{Kind: c.Kind}
+		}
+		a.canaries[c.Kind].Run += c.Run
+		a.canaries[c.Kind].Caught += c.Caught
+	}
 	p.LateSpans += m.LateSpans
 	for _, t := range m.Tokens {
 		found := false
@@ -307,6 +330,11 @@ func (a *accumulator) finish(s *Summary) {
 	for e := range a.evals {
 		s.Evals = append(s.Evals, e)
 	}
+	s.Canaries = []batch.Canary{}
+	for _, c := range a.canaries {
+		s.Canaries = append(s.Canaries, *c)
+	}
+	sort.Slice(s.Canaries, func(i, j int) bool { return s.Canaries[i].Kind < s.Canaries[j].Kind })
 	sort.Slice(s.Evals, func(i, j int) bool { return s.Evals[i].RanAt < s.Evals[j].RanAt })
 	for v := range a.versions {
 		s.Versions = append(s.Versions, v)
@@ -325,7 +353,7 @@ func (a *accumulator) finish(s *Summary) {
 }
 
 // EarlyAccess is where the report points people for independently signed packs.
-const EarlyAccess = "https://github.com/lumetrix-advanced-technologies/plumbline/issues/new?template=early-access.yml"
+const EarlyAccess = "https://github.com/lumetrix-advanced-technologies/tellproof/issues/new?template=early-access.yml"
 
 func pct(n, d int64) string {
 	if d == 0 {
@@ -348,7 +376,7 @@ func WriteJSON(w io.Writer, s *Summary) error {
 func WriteText(w io.Writer, s *Summary) error {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
-	p("Plumbline local evidence log, agent %s", s.AgentID)
+	p("Tellproof local evidence log, agent %s", s.AgentID)
 	if s.Verified {
 		p("  Verified: %d batches, signed by this agent's key and chained from batch 1 to %d.", s.Batches, s.LastSeq)
 		if s.LastHash != "" {
@@ -373,6 +401,7 @@ func WriteText(w io.Writer, s *Summary) error {
 		p("")
 		p("Guardrails      %d of %d model calls had a guardrail decision (%s); %d blocked", s.GuardedCalls, s.LLMCalls, pct(s.GuardedCalls, s.LLMCalls), s.Blocked)
 		p("Personal data   %d of %d spans with personal data were redacted (%s)", s.PIIRedacted, s.PIISpans, pct(s.PIIRedacted, s.PIISpans))
+		p("Canaries        %s", canaryLine(s.Canaries))
 		p("Content         %d spans arrived with message content; the agent dropped it", s.ContentDropped)
 		p("Agents          %d runs, %d tool calls (%d failed), %d high-impact calls (%d approved), %d escalations",
 			s.Agent.Runs, s.Agent.ToolCalls, s.Agent.ToolErrors, s.Agent.HighImpactCalls, s.Agent.HighImpactApproved, s.Agent.Escalations)
@@ -402,9 +431,30 @@ func WriteText(w io.Writer, s *Summary) error {
 	}
 	p("")
 	p("This log is signed by your own agent's key: it shows the record has not changed since")
-	p("it was written, relative to %s. For packs evaluated against Plumbline's evidence", enrol.PublicKeyFile)
+	p("it was written, relative to %s. For packs evaluated against Tellproof's evidence", enrol.PublicKeyFile)
 	p("objectives and signed by an independent issuer, which a bank, insurer or auditor can")
 	p("verify, request early access: %s", EarlyAccess)
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// canaryLine sums the guardrail canaries and names the kinds that were missed.
+func canaryLine(cs []batch.Canary) string {
+	var run, caught int64
+	var missed []string
+	for _, c := range cs {
+		run += c.Run
+		caught += c.Caught
+		if c.Run > c.Caught {
+			missed = append(missed, fmt.Sprintf("%s (%d)", c.Kind, c.Run-c.Caught))
+		}
+	}
+	if run == 0 {
+		return "none run: the SDK's schedule_canaries (scheduleCanaries) sends known-bad probes through your guardrail"
+	}
+	line := fmt.Sprintf("%d of %d known-bad probes caught by the guardrail (%s)", caught, run, pct(caught, run))
+	if len(missed) > 0 {
+		line += "; missed: " + strings.Join(missed, ", ")
+	}
+	return line
 }

@@ -101,6 +101,18 @@
         "tool_errors": 0
       },
       "anomalies": [],
+      "canaries": [
+        {
+          "caught": 1,
+          "kind": "pii",
+          "run": 2
+        },
+        {
+          "caught": 1,
+          "kind": "prompt_injection",
+          "run": 1
+        }
+      ],
       "content_present_spans": 0,
       "evals": [],
       "guardrails": {
@@ -152,6 +164,6 @@
         }
       ]
     },
-    "traces": 1
+    "traces": 4
   }
 ]

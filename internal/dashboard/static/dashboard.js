@@ -32,8 +32,8 @@ function sv(tag, attrs = {}) {
 // A link can pick the range: #range=7d.
 const linked = /range=(24h|7d|30d|all)/.exec(location.hash);
 let state = { range: linked ? linked[1] : load("range") || "24h", data: null, firstLoad: !linked };
-function load(k) { try { return localStorage.getItem("plumbline." + k); } catch { return null; } }
-function save(k, v) { try { localStorage.setItem("plumbline." + k, v); } catch { /* private window */ } }
+function load(k) { try { return localStorage.getItem("tellproof." + k); } catch { return null; } }
+function save(k, v) { try { localStorage.setItem("tellproof." + k, v); } catch { /* private window */ } }
 
 // ---- time buckets -------------------------------------------------------
 
@@ -89,7 +89,7 @@ function shape(log, rangeKey, now) {
     const k = bucketKey(p.t, daily);
     if (!buckets.has(k)) buckets.set(k, emptyBucket(k));
     const b = buckets.get(k);
-    for (const f of ["llm_calls", "guarded_calls", "blocked_calls", "pii_spans", "pii_spans_redacted", "content_present_spans", "tool_calls", "tool_errors", "traces_committed"]) b[f] += p[f];
+    for (const f of SUMMED) b[f] += p[f] || 0;
     for (const m of p.models) {
       const key = modelKey(m);
       b.calls.set(key, (b.calls.get(key) || 0) + m.calls);
@@ -101,7 +101,7 @@ function shape(log, rangeKey, now) {
   const tot = emptyBucket(0);
   const models = new Map();
   for (const p of inRange) {
-    for (const f of ["llm_calls", "guarded_calls", "blocked_calls", "pii_spans", "pii_spans_redacted", "content_present_spans", "tool_calls", "tool_errors", "traces_committed"]) tot[f] += p[f];
+    for (const f of SUMMED) tot[f] += p[f] || 0;
     for (const m of p.models) {
       const k = `${m.provider}\u0000${m.model}\u0000${m.region}`;
       const row = models.get(k) || { provider: m.provider, model: m.model, region: m.region, calls: 0, input: 0, output: 0 };
@@ -119,9 +119,14 @@ function shape(log, rangeKey, now) {
     evals: log.evals.filter((x) => inT(x.ran_at)),
   };
 }
+// The per-window counts that add up over a bucket or a range.
+const SUMMED = ["llm_calls", "guarded_calls", "blocked_calls", "pii_spans", "pii_spans_redacted", "content_present_spans", "tool_calls",
+  "tool_errors", "traces_committed", "canaries_run", "canaries_caught"];
+
 function emptyBucket(t) {
-  return { t, calls: new Map(), input: 0, output: 0, llm_calls: 0, guarded_calls: 0, blocked_calls: 0, pii_spans: 0, pii_spans_redacted: 0,
-    content_present_spans: 0, tool_calls: 0, tool_errors: 0, traces_committed: 0 };
+  const b = { t, calls: new Map(), input: 0, output: 0 };
+  for (const f of SUMMED) b[f] = 0;
+  return b;
 }
 
 // ---- axes -----------------------------------------------------------------
@@ -353,6 +358,9 @@ function drawTiles(sh) {
     tile("Model calls", compact.format(t.llm_calls), `${sh.models.length} model${sh.models.length === 1 ? "" : "s"} and regions`, fmt.format(t.llm_calls)),
     tile("Tokens", compact.format(t.input + t.output), `${compact.format(t.input)} in · ${compact.format(t.output)} out`, fmt.format(t.input + t.output)),
     tile("Guardrail coverage", pctText(g), `${fmt.format(t.guarded_calls)} of ${fmt.format(t.llm_calls)} calls · ${fmt.format(t.blocked_calls)} blocked`),
+    t.canaries_run
+      ? tile("Canaries caught", pctText(pct(t.canaries_caught, t.canaries_run)), `${fmt.format(t.canaries_caught)} of ${fmt.format(t.canaries_run)} known-bad probes`)
+      : tile("Canaries caught", "None", "no guardrail canaries run yet"),
     tile("Personal data redacted", pctText(p), `${fmt.format(t.pii_spans_redacted)} of ${fmt.format(t.pii_spans)} spans`),
     tile("Content dropped", compact.format(t.content_present_spans), "spans arrived with content; none kept", fmt.format(t.content_present_spans)),
     tile("Tool calls", compact.format(t.tool_calls), `${fmt.format(t.tool_errors)} failed`, fmt.format(t.tool_calls)),
@@ -455,6 +463,47 @@ function render() {
     log.recent_batches.map((b) => [fmt.format(b.seq), b.window_start.replace("T", " ").replace(":00:00Z", ":00"), fmt.format(b.llm_calls), fmt.format(b.traces), el("td", { class: "digest" }, b.digest)]), [0, 2, 3]));
 }
 
+// ---- evidence objectives: the same evaluator as signed packs -------------
+
+const STATUS = { pass: ["pass", "✓", "Pass"], attention: ["attention", "!", "Attention"], fail: ["fail", "✕", "Fail"] };
+function drawObjectives(api) {
+  const box = $("objectives"), sub = $("obj-sub");
+  if (!api || !api.available) {
+    sub.textContent = "Checked against your policy file, with the same evaluator as signed packs.";
+    box.replaceChildren(el("div", { class: "obj-note" },
+      el("p", {}, (api && api.message) || "Objectives are not available."),
+      el("pre", {}, el("code", {}, "tellproof-agent policy init     # declare the models and regions you see\ntellproof-agent check           # the same results in a terminal or CI"))));
+    return;
+  }
+  const r = api.report, s = r.summary;
+  const file = String(api.policy).split(/[\\/]/).pop();
+  sub.textContent = `${r.period.start} to ${r.period.end} (${r.timezone}), against ${file}: ${s.pass} pass, ${s.attention} attention, ${s.fail} fail. ` +
+    "A self-assessment with the same evaluator as signed packs.";
+  box.replaceChildren(...r.objectives.map((o) => {
+    const [cls, sym, word] = STATUS[o.status] || ["neutral", "?", o.status];
+    const card = el("article", { class: `obj ${cls}` },
+      el("div", { class: "head" }, el("span", { class: "id" }, o.id),
+        el("span", { class: `pill ${cls}` }, el("span", { "aria-hidden": "true" }, sym), ` ${word}`)),
+      el("h3", {}, o.title),
+      el("p", { class: "measured" }, o.measured),
+      el("p", { class: "target" }, `Target: ${o.threshold}`));
+    if (o.maps && o.maps.length) {
+      card.append(el("details", {}, el("summary", {}, `Supports ${o.maps.length} framework reference${o.maps.length === 1 ? "" : "s"}`),
+        el("ul", {}, ...o.maps.map((m) => el("li", {}, m)))));
+    }
+    return card;
+  }));
+}
+
+async function refreshObjectives() {
+  try {
+    const r = await fetch(`api/check?range=${encodeURIComponent(state.range)}`, { cache: "no-store" });
+    drawObjectives(r.ok ? await r.json() : null);
+  } catch {
+    drawObjectives(null);
+  }
+}
+
 async function refresh() {
   for (const c of document.querySelectorAll(".chart")) c.classList.add("loading");
   try {
@@ -462,6 +511,7 @@ async function refresh() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     state.data = await r.json();
     render();
+    refreshObjectives();
   } catch (e) {
     $("status").replaceChildren(el("span", { class: "pill fail" }, el("span", { "aria-hidden": "true" }, "✕"), " Agent not reachable"), el("span", {}, String(e.message || e)));
   } finally {
@@ -475,6 +525,7 @@ $("range").addEventListener("click", (e) => {
   state.range = b.dataset.range;
   save("range", state.range);
   render();
+  refreshObjectives();
 });
 let resizeTimer;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 120); });

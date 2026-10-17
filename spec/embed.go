@@ -11,7 +11,7 @@ import _ "embed"
 //go:embed semconv-map.json
 var SemconvMap string
 
-// Objectives is spec/objectives.json: the ten evidence objectives and rules.
+// Objectives is spec/objectives.json: the eleven evidence objectives and rules.
 //
 //go:embed objectives.json
 var Objectives string

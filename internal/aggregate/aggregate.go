@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/otlp"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/otlp"
 )
 
 // Config holds the window and anomaly settings (D-020 defaults).
@@ -198,6 +198,7 @@ func (a *Aggregator) build(h time.Time, w *open) Window {
 	tokens := map[key]*batch.TokenCount{}
 	models := map[batch.ObservedModel]bool{}
 	versions := map[batch.ObservedVersion]bool{}
+	canaries := map[string]*batch.Canary{}
 	var llmCalls, llmErrors int64
 	var traces []string
 	for _, s := range spans {
@@ -218,6 +219,21 @@ func (a *Aggregator) build(h time.Time, w *open) Window {
 		}
 		if s.Escalation {
 			m.Agent.Escalations++
+		}
+		if s.CanaryKind != "" {
+			kind := s.CanaryKind
+			if canaries[kind] == nil && len(canaries) >= batch.MaxCanaryKinds {
+				kind = "other"
+			}
+			c := canaries[kind]
+			if c == nil {
+				c = &batch.Canary{Kind: kind}
+				canaries[kind] = c
+			}
+			c.Run++
+			if s.CanaryCaught {
+				c.Caught++
+			}
 		}
 		switch s.Kind {
 		case otlp.KindAgent:
@@ -263,6 +279,10 @@ func (a *Aggregator) build(h time.Time, w *open) Window {
 		}
 	}
 	m.Guardrails.LLMCalls = llmCalls
+	for _, c := range canaries {
+		m.Canaries = append(m.Canaries, *c)
+	}
+	slices.SortFunc(m.Canaries, func(x, y batch.Canary) int { return cmp.Compare(x.Kind, y.Kind) })
 	for _, tc := range tokens {
 		m.Tokens = append(m.Tokens, *tc)
 	}

@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batchsign"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/dsse"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batchsign"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/dsse"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
 )
 
 const agentID = "agt_0123456789abcdef"
@@ -144,7 +144,7 @@ func noSleep(context.Context, time.Duration) error { return nil }
 
 // TestHelperAgent is the agent process the kill test starts and kills.
 func TestHelperAgent(t *testing.T) {
-	if os.Getenv("PLUMBLINE_QUEUE_HELPER") != "1" {
+	if os.Getenv("TELLPROOF_QUEUE_HELPER") != "1" {
 		t.Skip("helper process for TestKillMidSendLosesNothing")
 	}
 	n, _ := strconv.ParseInt(os.Getenv("HELPER_N"), 10, 64)
@@ -173,7 +173,7 @@ func TestKillMidSendLosesNothing(t *testing.T) {
 	const n = 12
 	run := func() *exec.Cmd {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperAgent$", "-test.count=1")
-		cmd.Env = append(os.Environ(), "PLUMBLINE_QUEUE_HELPER=1", "HELPER_DIR="+dir, "HELPER_SERVER="+hs.URL, fmt.Sprintf("HELPER_N=%d", n))
+		cmd.Env = append(os.Environ(), "TELLPROOF_QUEUE_HELPER=1", "HELPER_DIR="+dir, "HELPER_SERVER="+hs.URL, fmt.Sprintf("HELPER_N=%d", n))
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}

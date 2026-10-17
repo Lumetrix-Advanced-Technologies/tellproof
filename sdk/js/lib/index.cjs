@@ -1,42 +1,48 @@
 'use strict';
-// Plumbline SDK: one line to send evidence telemetry to the local Plumbline agent.
+// Tellproof SDK: one line to send evidence telemetry to the local Tellproof agent.
 //
-//   const plumbline = require('plumbline-sdk');   // or: import * as plumbline from 'plumbline-sdk'
-//   plumbline.init();
+//   const tellproof = require('tellproof');   // or: import * as tellproof from 'tellproof'
+//   tellproof.init();
 //
 // Spans go as OTLP JSON to the agent (http://127.0.0.1:4318, or
-// PLUMBLINE_AGENT_URL). They carry provider, model, region, token counts,
+// TELLPROOF_AGENT_URL). They carry provider, model, region, token counts,
 // operation, timing, error status and the helper attributes; never prompts,
 // completions, function arguments or error messages. No dependencies; never
 // blocks a request (a full buffer drops spans and counts them) and never throws
-// into the app. PLUMBLINE_DISABLED=1 turns it off.
+// into the app. TELLPROOF_DISABLED=1 turns it off.
 
 const path = require('node:path');
 const core = require('./core.cjs');
+const canaries = require('./canary.cjs');
 const otlp = require('./otlp.cjs');
 const { Exporter, httpTransport } = require('./export.cjs');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:4318';
 let exitHook = false;
 let instrumented = [];
 
+// TELLPROOF_<name>, else PLUMBLINE_<name> from before the rename (D-056).
+function env(name) {
+  return process.env['TELLPROOF_' + name] || process.env['PLUMBLINE_' + name] || '';
+}
+
 function resource(service, environment) {
-  let name = service || process.env.PLUMBLINE_SERVICE || process.env.OTEL_SERVICE_NAME;
+  let name = service || env('SERVICE') || process.env.OTEL_SERVICE_NAME;
   if (!name) name = `unknown_service:${path.basename(process.argv[1] || process.argv0 || 'node')}`;
   const r = {
     'service.name': String(name).slice(0, core.MAX_VALUE),
-    'telemetry.sdk.name': 'plumbline',
+    'telemetry.sdk.name': 'tellproof',
     'telemetry.sdk.language': 'nodejs',
     'telemetry.sdk.version': VERSION,
   };
-  const env = environment || process.env.PLUMBLINE_ENVIRONMENT;
-  if (env) r['deployment.environment.name'] = String(env).slice(0, core.MAX_VALUE);
+  const deployEnv = environment || env('ENVIRONMENT');
+  if (deployEnv) r['deployment.environment.name'] = String(deployEnv).slice(0, core.MAX_VALUE);
   return r;
 }
 
 function disabledByEnv() {
-  return ['1', 'true', 'yes'].includes(String(process.env.PLUMBLINE_DISABLED || '').trim().toLowerCase());
+  return ['1', 'true', 'yes'].includes(String(env('DISABLED') || '').trim().toLowerCase());
 }
 
 // Start the SDK. Safe to call more than once; returns whether it is on.
@@ -45,7 +51,7 @@ function init(opts = {}) {
   if (disabledByEnv()) return false;
   try {
     const o = opts || {};
-    const url = String(o.agentUrl || process.env.PLUMBLINE_AGENT_URL || DEFAULT_AGENT_URL).replace(/\/+$/, '');
+    const url = String(o.agentUrl || env('AGENT_URL') || DEFAULT_AGENT_URL).replace(/\/+$/, '');
     const res = resource(o.service, o.environment);
     const exporter = new Exporter(o.transport || httpTransport(url + '/v1/traces'), (spans) => otlp.encode(spans, res, VERSION));
     core.setClient(new core.Client(exporter, { service: res['service.name'] }));
@@ -64,7 +70,7 @@ function init(opts = {}) {
     }
     if (!exitHook) {
       // Flush once when the event loop drains. Short-lived scripts and serverless
-      // handlers should await plumbline.flush() themselves.
+      // handlers should await tellproof.flush() themselves.
       exitHook = true;
       process.once('beforeExit', () => {
         flush().catch(() => {});
@@ -112,7 +118,7 @@ async function ready() {
 
 // Instrument client libraries the SDK cannot find on its own (bundled apps,
 // strict package managers): pass what you import, for example
-// plumbline.instrument({ openai: OpenAI, anthropic: Anthropic, bedrock: await import('@aws-sdk/client-bedrock-runtime') }).
+// tellproof.instrument({ openai: OpenAI, anthropic: Anthropic, bedrock: await import('@aws-sdk/client-bedrock-runtime') }).
 function instrument(libs) {
   try {
     const list = require('./instrument.cjs').instrument(libs || {});
@@ -160,4 +166,8 @@ module.exports = {
   agentRun: core.agentRun,
   llmCall: core.llmCall,
   escalation: core.escalation,
+  PROBES: canaries.PROBES,
+  canary: canaries.canary,
+  runCanaries: canaries.runCanaries,
+  scheduleCanaries: canaries.scheduleCanaries,
 };

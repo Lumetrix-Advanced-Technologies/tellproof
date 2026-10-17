@@ -16,11 +16,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/dsse"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/enrol"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/jcs"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/dsse"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/enrol"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/jcs"
 )
 
 // ErrInvalid: the envelope verified but its payload is not a valid v0.2 batch.
@@ -56,7 +56,7 @@ func (b *Builder) Build(ctx context.Context, st State, w aggregate.Window, commi
 	if usage == nil {
 		usage = []batch.Usage{}
 	}
-	bt := batch.Batch{Schema: batch.Schema, AgentID: b.agentID, Seq: st.Seq + 1, Prev: st.Prev, Window: w.Window,
+	bt := batch.Batch{Schema: batch.SchemaFor(w.Metrics), AgentID: b.agentID, Seq: st.Seq + 1, Prev: st.Prev, Window: w.Window,
 		SemconvMap: b.semconvMap, Metrics: w.Metrics, Observed: w.Observed, Usage: usage, Commit: commit}
 	raw, err := json.Marshal(bt)
 	if err != nil {
@@ -112,8 +112,10 @@ func Verify(env *dsse.Envelope, pub ed25519.PublicKey, agentID string) (*batch.B
 		return nil, fmt.Errorf("%w: trailing data", ErrInvalid)
 	}
 	switch {
-	case bt.Schema != batch.Schema:
-		return nil, fmt.Errorf("%w: schema %q, want %q", ErrInvalid, bt.Schema, batch.Schema)
+	case bt.Schema != batch.Schema && bt.Schema != batch.SchemaCanaries:
+		return nil, fmt.Errorf("%w: schema %q, want %q or %q", ErrInvalid, bt.Schema, batch.Schema, batch.SchemaCanaries)
+	case bt.Schema != batch.SchemaFor(bt.Metrics):
+		return nil, fmt.Errorf("%w: schema %q, but canaries are only in %q", ErrInvalid, bt.Schema, batch.SchemaCanaries)
 	case bt.AgentID != agentID:
 		return nil, fmt.Errorf("%w: agent_id %q is not the signer", ErrInvalid, bt.AgentID)
 	case bt.Seq < 1:

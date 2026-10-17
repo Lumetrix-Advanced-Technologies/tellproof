@@ -16,8 +16,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/aggregate"
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/langfuse"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/aggregate"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/langfuse"
 )
 
 // Config is the agent's JSON config file (agent.example.json). Secrets are
@@ -79,11 +79,24 @@ func (e EvalScore) toLangfuse() langfuse.EvalScore {
 	return langfuse.EvalScore{Name: e.Name, Suite: e.Suite, PassAtLeast: e.PassAtLeast}
 }
 
+// DefaultDataDir is ./.tellproof-agent, or ./.plumbline-agent when only
+// that one exists: the directory an agent made before the rename (D-056)
+// keeps its identity, chain and local log.
+func DefaultDataDir() string {
+	const dir, legacy = "./.tellproof-agent", "./.plumbline-agent"
+	if _, err := os.Stat(dir); err != nil {
+		if fi, err := os.Stat(legacy); err == nil && fi.IsDir() {
+			return legacy
+		}
+	}
+	return dir
+}
+
 // LoadConfig reads a config file (empty path: defaults only), then applies
-// the environment overrides PLUMBLINE_SERVER, PLUMBLINE_DATA_DIR and
-// PLUMBLINE_OTLP_LISTEN, and validates the result.
+// the environment overrides TELLPROOF_SERVER, TELLPROOF_DATA_DIR and
+// TELLPROOF_OTLP_LISTEN, and validates the result.
 func LoadConfig(path string, getenv func(string) string) (Config, error) {
-	c := Config{DataDir: "./.plumbline-agent", OTLPListen: "127.0.0.1:4318", DashboardListen: "127.0.0.1:4319", SaltSecretEnv: "PLUMBLINE_SALT_SECRET"}
+	c := Config{DataDir: DefaultDataDir(), OTLPListen: "127.0.0.1:4318", DashboardListen: "127.0.0.1:4319", SaltSecretEnv: "TELLPROOF_SALT_SECRET"}
 	d := aggregate.DefaultConfig()
 	c.Aggregation.GraceMinutes = int(d.Grace / time.Minute)
 	c.Aggregation.FirstBatchSeconds = 60
@@ -102,14 +115,14 @@ func LoadConfig(path string, getenv func(string) string) (Config, error) {
 			return c, fmt.Errorf("agent: config %s: unexpected data after the JSON document", path)
 		}
 	}
-	for env, field := range map[string]*string{"PLUMBLINE_SERVER": &c.Server, "PLUMBLINE_DATA_DIR": &c.DataDir, "PLUMBLINE_OTLP_LISTEN": &c.OTLPListen, "PLUMBLINE_DASHBOARD_LISTEN": &c.DashboardListen} {
+	for env, field := range map[string]*string{"TELLPROOF_SERVER": &c.Server, "TELLPROOF_DATA_DIR": &c.DataDir, "TELLPROOF_OTLP_LISTEN": &c.OTLPListen, "TELLPROOF_DASHBOARD_LISTEN": &c.DashboardListen} {
 		if v := getenv(env); v != "" {
 			*field = v
 		}
 	}
 	// The container image listens on all interfaces inside its network namespace;
 	// the docker run line publishes the port on the host's loopback only.
-	if getenv("PLUMBLINE_OTLP_ALLOW_REMOTE") == "1" {
+	if getenv("TELLPROOF_OTLP_ALLOW_REMOTE") == "1" {
 		c.OTLPAllowRemote = true
 	}
 	return c, c.validate()

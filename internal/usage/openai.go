@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/batch"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/batch"
 )
 
 // OpenAI polls the organisation Usage API (completions and embeddings) with

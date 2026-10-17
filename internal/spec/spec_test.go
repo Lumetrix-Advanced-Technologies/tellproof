@@ -169,8 +169,8 @@ func TestBrokenSpecFails(t *testing.T) {
 		{
 			name:    "unknown field in semconv map",
 			file:    "semconv-map.json",
-			old:     `"version": "v2",`,
-			new:     `"version": "v2", "extra": 1,`,
+			old:     `"version": "v3",`,
+			new:     `"version": "v3", "extra": 1,`,
 			wantErr: `semconv-map.json: json: unknown field "extra"`,
 		},
 	}

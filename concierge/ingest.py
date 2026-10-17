@@ -6,7 +6,7 @@ for presence only, and every other attribute is ignored unless it is one of the
 mapped names below. Trace IDs leave only as salted Merkle leaves.
 
 Attribute names beyond spec/semconv-map.json (PII, guardrails, prompt versions,
-tool approval, escalation) are Plumbline concierge defaults; override them per
+tool approval, escalation) are Tellproof concierge defaults; override them per
 design partner with --attributes (D-020).
 """
 import datetime as dt
@@ -21,16 +21,16 @@ SPEC = Path(__file__).resolve().parent.parent / "spec"
 SCHEMA = "plumbline-concierge-aggregates/v0.1"
 
 DEFAULT_ATTRIBUTES = {
-    "pii_marker": "plumbline.data_class",  # span carries personal data when the value is in pii_values
+    "pii_marker": "tellproof.data_class",  # span carries personal data when the value is in pii_values
     "pii_values": ["personal"],
-    "redacted": "plumbline.redaction.applied",  # true when a redaction processor ran
-    "guardrail_decision": "plumbline.guardrail.decision",  # allow | block | flag, on the LLM call span
-    "prompt_name": "plumbline.prompt.name",
-    "prompt_version": "plumbline.prompt.version",
+    "redacted": "tellproof.redaction.applied",  # true when a redaction processor ran
+    "guardrail_decision": "tellproof.guardrail.decision",  # allow | block | flag, on the LLM call span
+    "prompt_name": "tellproof.prompt.name",
+    "prompt_version": "tellproof.prompt.version",
     "slot": "gen_ai.agent.name",  # model transitions are tracked per slot (falls back to service.name)
-    "high_impact": "plumbline.tool.high_impact",
-    "approved": "plumbline.tool.approved",
-    "escalation": "plumbline.escalation",
+    "high_impact": "tellproof.tool.high_impact",
+    "approved": "tellproof.tool.approved",
+    "escalation": "tellproof.escalation",
     "llm_operations": ["chat", "text_completion", "generate_content", "embeddings", "completion", "embedding"],
     "anomaly": {"min_calls": 20, "error_rate": 0.05, "guardrail_block_rate": 0.03},
 }
@@ -57,7 +57,7 @@ class Span:
 
     __slots__ = ("trace_id", "start", "kind", "operation", "provider", "model", "region", "input_tokens", "output_tokens",
                  "error", "content_present", "pii", "redacted", "guardrail", "prompt_name", "prompt_version",
-                 "slot", "high_impact", "approved", "escalation")
+                 "slot", "high_impact", "approved", "escalation", "canary_kind", "canary_caught")
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -78,6 +78,19 @@ def _classify(operation, attrs) -> str:
     return "other"
 
 
+MAX_CANARY_KINDS = 16  # per window; the rest count as "other" (internal/batch)
+
+
+def canary_kind(v) -> str:
+    """1 to 32 of a-z, 0-9, '_' and '-', else "other" (batch.CanaryKind)."""
+    if not isinstance(v, str):
+        return "other"
+    s = v.lower()
+    if not 0 < len(s) <= 32 or any(not (c.isascii() and (c.islower() or c.isdigit() or c in "_-")) for c in s):
+        return "other"
+    return s
+
+
 def _pick(values: dict, names: list[str]):
     for n in names:
         if n in values and values[n] not in (None, ""):
@@ -87,11 +100,15 @@ def _pick(values: dict, names: list[str]):
 
 def _span_from_values(trace_id, start, operation, values, presence_keys, error, semconv, attrs, langfuse_content=False):
     """values: only the attribute values we are allowed to read (already filtered)."""
+    # The tellproof.* attributes, or the plumbline.* names they replaced (D-056).
+    for k in [k for k in values if k.startswith("plumbline.")]:
+        values.setdefault("tellproof." + k[len("plumbline."):], values[k])
     f = semconv["fields"]
     kind = _classify(operation, attrs)
     prefixes = tuple(semconv.get("presence_only_prefixes", []))
     content = langfuse_content or any(k in semconv["presence_only"] or (prefixes and k.startswith(prefixes)) for k in presence_keys)
     model = _pick(values, f["response_model"]) or _pick(values, f["request_model"])
+    ck = _pick(values, f["canary_kind"])
     return Span(
         trace_id=trace_id, start=start, kind=kind, operation=str(operation or ""),
         provider=str(_pick(values, f["provider"]) or "unknown"),
@@ -107,6 +124,8 @@ def _span_from_values(trace_id, start, operation, values, presence_keys, error, 
         slot=values.get(attrs["slot"]) or values.get("service.name"),
         high_impact=_truthy(values.get(attrs["high_impact"])), approved=_truthy(values.get(attrs["approved"])),
         escalation=_truthy(values.get(attrs["escalation"])),
+        canary_kind=None if ck is None else canary_kind(ck),
+        canary_caught=_truthy(_pick(values, f["canary_caught"])),
     )
 
 
@@ -331,6 +350,15 @@ def aggregate(spans, attrs, salt_secret: bytes):
             "versions": [{"model": m, "prompt_version": v} for m, v in
                          sorted({(s.model, str(s.prompt_version)) for s in llm if s.model != "unknown" and s.prompt_version not in (None, "")})],
         }
+        canaries = {}
+        for s in hs:
+            if s.canary_kind is not None:
+                k = s.canary_kind if s.canary_kind in canaries or len(canaries) < MAX_CANARY_KINDS else "other"
+                c = canaries.setdefault(k, {"kind": k, "run": 0, "caught": 0})
+                c["run"] += 1
+                c["caught"] += s.canary_caught
+        if canaries:  # only in windows that had canaries, as the agent's batch v0.3 (D-057)
+            metrics["canaries"] = [canaries[k] for k in sorted(canaries)]
         windows.append({"window": {"start": _iso(hour), "end": _iso(end)}, "metrics": metrics, "observed": observed, "commit": commit})
         all_leaves.extend(l.hex() for l in leaves)
     return windows, all_leaves
@@ -340,7 +368,7 @@ def ingest(kind: str, paths: list[str], salt_secret: bytes, attributes_path: str
     if kind not in ("otlp", "langfuse"):
         raise ValueError("source must be otlp or langfuse")
     if not salt_secret:
-        raise ValueError("a salt secret is required (PLUMBLINE_SALT_SECRET)")
+        raise ValueError("a salt secret is required (TELLPROOF_SALT_SECRET)")
     semconv = load_semconv()
     attrs = load_attributes(attributes_path)
     files = [Path(p) for p in paths]

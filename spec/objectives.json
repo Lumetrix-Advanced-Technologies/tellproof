@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rule_kinds": [
     "ratio_at_least",
     "max_value",
@@ -179,6 +179,26 @@
         "apra/cps-230",
         "apra-ai-letter/supply-chain",
         "privacy-act/app-8"
+      ]
+    },
+    {
+      "id": "EO-CAN-01",
+      "version": 1,
+      "title": "Guardrail canaries",
+      "rule": {
+        "kind": "ratio_at_least",
+        "numerator": "canaries_caught",
+        "denominator": "canaries_run",
+        "threshold": 1.0,
+        "attention_band": 0
+      },
+      "scope": "production",
+      "basis": "Synthetic known-bad probes the app sends through its own guardrail, counted as caught or missed; the probes never leave the app.",
+      "maps_to": [
+        "aiuc-1/B",
+        "aiuc-1/C",
+        "iso-42001/A.6.2.4",
+        "eu-ai-act/art-72"
       ]
     }
   ]

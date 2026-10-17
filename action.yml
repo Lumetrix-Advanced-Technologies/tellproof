@@ -1,0 +1,74 @@
+name: Tellproof governance check
+description: Validate tellproof.policy.json, or check a Tellproof evidence log against the eleven evidence objectives, or self-test that each objective can fail, and fail the job when one fails.
+author: Lumetrix
+branding: { icon: shield, color: blue }
+inputs:
+  command:
+    description: "validate (check the policy file only), check (evaluate an evidence log against it) or self-test (show each objective can fail on that log and that tampering is detected)"
+    default: validate
+  policy:
+    description: The policy file.
+    default: tellproof.policy.json
+  data-dir:
+    description: "check: the agent's data directory (a copy of a local-mode log)"
+    default: .tellproof-agent
+  since:
+    description: "check: first local day (YYYY-MM-DD); default the last 30 days with data"
+    default: ""
+  until:
+    description: "check: last local day (YYYY-MM-DD); default today"
+    default: ""
+  strict:
+    description: "check: fail on attention too"
+    default: "false"
+  junit:
+    description: "check: write JUnit XML here, for test reporters"
+    default: tellproof-check.xml
+  version:
+    description: The tellproof-agent version from PyPI (default the latest).
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install tellproof-agent
+      shell: bash
+      env: { VERSION: "${{ inputs.version }}" }
+      run: python3 -m pip install --disable-pip-version-check --quiet "tellproof-agent${VERSION:+==$VERSION}"
+    - name: Run
+      shell: bash
+      env:
+        COMMAND: ${{ inputs.command }}
+        POLICY: ${{ inputs.policy }}
+        DATA_DIR: ${{ inputs.data-dir }}
+        SINCE: ${{ inputs.since }}
+        UNTIL: ${{ inputs.until }}
+        STRICT: ${{ inputs.strict }}
+        JUNIT: ${{ inputs.junit }}
+      run: |
+        case "$COMMAND" in
+          validate) tellproof-agent policy validate --policy "$POLICY" ;;
+          check)
+            args=(check --policy "$POLICY" --data-dir "$DATA_DIR" --junit "$JUNIT")
+            [ -n "$SINCE" ] && args+=(--since "$SINCE")
+            [ -n "$UNTIL" ] && args+=(--until "$UNTIL")
+            [ "$STRICT" = "true" ] && args+=(--strict)
+            set +e
+            tellproof-agent "${args[@]}" > tellproof-check.txt 2>&1
+            code=$?
+            set -e
+            cat tellproof-check.txt
+            { echo '### Tellproof governance check'; echo '```'; cat tellproof-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$code" ;;
+          self-test)
+            args=(check --self-test --policy "$POLICY" --data-dir "$DATA_DIR")
+            [ -n "$SINCE" ] && args+=(--since "$SINCE")
+            [ -n "$UNTIL" ] && args+=(--until "$UNTIL")
+            set +e
+            tellproof-agent "${args[@]}" > tellproof-self-test.txt 2>&1
+            code=$?
+            set -e
+            cat tellproof-self-test.txt
+            { echo '### Tellproof self-test'; echo '```'; cat tellproof-self-test.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$code" ;;
+          *) echo "command must be validate, check or self-test, not $COMMAND" >&2; exit 2 ;;
+        esac

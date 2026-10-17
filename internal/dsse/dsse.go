@@ -1,4 +1,4 @@
-// Package dsse implements Dead Simple Signing Envelopes as used by Plumbline
+// Package dsse implements Dead Simple Signing Envelopes as used by Tellproof
 // packs and agent batches (docs/architecture.md §2.2).
 //
 // Packs are signed with ECDSA P-256 over SHA-256, signatures in ASN.1 DER (what
@@ -21,7 +21,7 @@ import (
 	"strconv"
 )
 
-// Payload types Plumbline signs.
+// Payload types Tellproof signs.
 const (
 	PayloadTypeInToto = "application/vnd.in-toto+json"
 	PayloadTypeBatch  = "application/vnd.lumetrix.plumbline.batch+json"

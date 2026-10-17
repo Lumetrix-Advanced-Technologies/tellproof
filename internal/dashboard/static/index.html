@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Plumbline · Local evidence log</title>
+<title>Tellproof · Local evidence log</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="brand.css">
 <link rel="stylesheet" href="dashboard.css">
@@ -14,7 +14,8 @@
 <header class="top">
   <div class="top-row">
     <div class="brand">
-      <span class="wordmark">Plumbline</span>
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#1f56c9"/><path d="M25.5 17l-4.75 8.23h-9.5L6.5 17l4.75-8.23h9.5z" fill="#fff"/><path d="M16 17L26.6 6.4" stroke="#e2ad45" stroke-width="3.4" stroke-linecap="round"/><circle cx="16" cy="17" r="3.6" fill="#1f56c9"/></svg>
+      <span class="wordmark">Tellproof</span>
       <span class="where">Local evidence log</span>
     </div>
     <div class="status" id="status" aria-live="polite"></div>
@@ -32,18 +33,23 @@
     <p class="meta" id="meta"></p>
   </div>
 
-  <noscript><p class="notice">The dashboard needs JavaScript. Run <code>plumbline-agent report</code> for the same figures in your terminal.</p></noscript>
+  <noscript><p class="notice">The dashboard needs JavaScript. Run <code>tellproof-agent report</code> for the same figures in your terminal.</p></noscript>
 
   <section class="empty" id="empty" hidden>
     <h1>Waiting for your first model call</h1>
     <p>The agent is listening. Add one line to your app, make a model call, and this page fills in about a minute later.</p>
-<pre><code>pip install plumbline-sdk     →  import plumbline; plumbline.init()
-npm install plumbline-sdk     →  import * as plumbline from 'plumbline-sdk'; plumbline.init();</code></pre>
+<pre><code>pip install tellproof     →  import tellproof; tellproof.init()
+npm install tellproof     →  import * as tellproof from 'tellproof'; tellproof.init();</code></pre>
     <p class="muted" id="empty-detail"></p>
   </section>
 
   <div id="board" hidden>
     <section class="tiles" id="tiles" aria-label="Totals for the selected range"></section>
+
+    <section class="card" id="card-objectives">
+      <header class="card-head"><div><h2>Evidence objectives</h2><p class="sub" id="obj-sub"></p></div></header>
+      <div class="obj-grid" id="objectives"></div>
+    </section>
 
     <section class="grid">
       <article class="card span-2" id="card-calls">
@@ -93,7 +99,7 @@ npm install plumbline-sdk     →  import * as plumbline from 'plumbline-sdk'; p
   <aside class="cta" id="cta">
     <div>
       <h2>Share this evidence with a bank, insurer or auditor</h2>
-      <p>This log is signed by your own agent's key. Plumbline's hosted service evaluates it against ten evidence objectives and issues monthly packs signed by an independent issuer, which reviewers verify in their browser.</p>
+      <p>This log is signed by your own agent's key. Tellproof's hosted service evaluates it against eleven evidence objectives and issues monthly packs signed by an independent issuer, which reviewers verify in their browser.</p>
     </div>
     <a class="button" id="cta-link" href="#" rel="noopener noreferrer" target="_blank">Request early access</a>
   </aside>

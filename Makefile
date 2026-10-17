@@ -1,4 +1,4 @@
-# Plumbline evidence agent, verifier and SDKs. Requires Go 1.26+; the tests
+# Tellproof evidence agent, verifier and SDKs. Requires Go 1.26+; the tests
 # also use Node 22+ and Python 3.10+ with `cryptography` (no other packages).
 SHELL := /bin/bash
 STATICCHECK := honnef.co/go/tools/cmd/staticcheck@2026.2.2
@@ -48,24 +48,24 @@ packages: release-binaries
 	python3 packaging/build_wheels.py --dist dist --version $(VERSION) --out dist/pypi
 	python3 packaging/build_npm.py --dist dist --version $(VERSION) --out dist/npm
 
-# Static binaries: plumbline-verify, plumbline-agent and plumbline-agent-bedrock
+# Static binaries: tellproof-verify, tellproof-agent and tellproof-agent-bedrock
 # (with the Bedrock usage poller) for every platform, or for GOOS/GOARCH alone.
 release-binaries:
 	@mkdir -p dist
 	@for p in $(if $(GOOS),$(GOOS)/$(GOARCH),$(PLATFORMS)); do os=$${p%/*}; arch=$${p#*/}; ext=; [ $$os = windows ] && ext=.exe; \
-	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/plumbline-verify-$$os-$$arch$$ext ./cmd/verify || exit 1; \
-	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/plumbline-agent-$$os-$$arch$$ext ./cmd/agent || exit 1; \
-	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -tags bedrock -o dist/plumbline-agent-bedrock-$$os-$$arch$$ext ./cmd/agent || exit 1; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/tellproof-verify-$$os-$$arch$$ext ./cmd/verify || exit 1; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/tellproof-agent-$$os-$$arch$$ext ./cmd/agent || exit 1; \
+	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -tags bedrock -o dist/tellproof-agent-bedrock-$$os-$$arch$$ext ./cmd/agent || exit 1; \
 	done; ls dist
 
 release-sums:
-	cd dist && sha256sum plumbline-* $$(ls RELEASE-NOTES.md 2>/dev/null) > SHA256SUMS && cat SHA256SUMS
+	cd dist && sha256sum tellproof-* $$(ls RELEASE-NOTES.md 2>/dev/null) > SHA256SUMS && cat SHA256SUMS
 
 agent-image:
-	docker build -f cmd/agent/Dockerfile --build-arg VERSION=$(VERSION) -t plumbline-agent:$(VERSION) .
+	docker build -f cmd/agent/Dockerfile --build-arg VERSION=$(VERSION) -t tellproof-agent:$(VERSION) .
 
 agent-dry:
-	PLUMBLINE_SALT_SECRET=$${PLUMBLINE_SALT_SECRET:-dry-run-salt-not-a-secret} go run ./cmd/agent --config agent.example.json --dry-run --replay concierge/testdata/otlp-sample.jsonl
+	TELLPROOF_SALT_SECRET=$${TELLPROOF_SALT_SECRET:-dry-run-salt-not-a-secret} go run ./cmd/agent --config agent.example.json --dry-run --replay concierge/testdata/otlp-sample.jsonl
 
 # The local dashboard on a week of synthetic data, for working on its design.
 dashboard-demo:

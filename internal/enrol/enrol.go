@@ -112,7 +112,7 @@ func Enrol(ctx context.Context, o Options) (*Identity, error) {
 func checkServer(server string) error {
 	u, err := url.Parse(server)
 	if err != nil || u.Host == "" {
-		return errors.New("enrol: the server must be a URL such as https://api.plumbline.example")
+		return errors.New("enrol: the server must be a URL such as https://api.tellproof.example")
 	}
 	host := u.Hostname()
 	local := host == "localhost" || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
@@ -187,7 +187,7 @@ func readIdentity(dir string) (*Identity, error) {
 func Load(dir string) (*Identity, error) {
 	id, err := readIdentity(dir)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("enrol: not enrolled: run `plumbline-agent enrol --token <token>` first (data dir %s)", dir)
+		return nil, fmt.Errorf("enrol: not enrolled: run `tellproof-agent enrol --token <token>` first (data dir %s)", dir)
 	}
 	if err != nil {
 		return nil, err

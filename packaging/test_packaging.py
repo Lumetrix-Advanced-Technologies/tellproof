@@ -33,7 +33,7 @@ class Packaging(unittest.TestCase):
         self.dist = self.tmp / "dist"
         self.dist.mkdir()
         for goos, goarch in build_wheels.PLATFORMS:
-            p = self.dist / f"plumbline-agent-{goos}-{goarch}{'.exe' if goos == 'windows' else ''}"
+            p = self.dist / f"tellproof-agent-{goos}-{goarch}{'.exe' if goos == 'windows' else ''}"
             p.write_text(STUB if goos != "windows" else "not a real windows binary")
             p.chmod(0o755)
         self.license = self.tmp / "LICENSE"
@@ -45,14 +45,14 @@ class Packaging(unittest.TestCase):
         wheels = sorted(p.name for p in out.glob("*.whl"))
         self.assertEqual(len(wheels), 6, wheels)
         for w in out.glob("*.whl"):
-            self.assertTrue(w.name.startswith("plumbline_agent-1.2.3-py3-none-"), w.name)
+            self.assertTrue(w.name.startswith("tellproof_agent-1.2.3-py3-none-"), w.name)
             with zipfile.ZipFile(w) as z:
                 names = z.namelist()
-                info = "plumbline_agent-1.2.3.dist-info"
-                for need in ["plumbline_agent/__init__.py", "plumbline_agent/__main__.py", f"{info}/METADATA", f"{info}/WHEEL",
+                info = "tellproof_agent-1.2.3.dist-info"
+                for need in ["tellproof_agent/__init__.py", "tellproof_agent/__main__.py", f"{info}/METADATA", f"{info}/WHEEL",
                              f"{info}/entry_points.txt", f"{info}/RECORD", f"{info}/LICENSE"]:
                     self.assertIn(need, names, w.name)
-                exe = [n for n in names if n.startswith("plumbline_agent/bin/")]
+                exe = [n for n in names if n.startswith("tellproof_agent/bin/")]
                 self.assertEqual(len(exe), 1, names)
                 self.assertEqual((z.getinfo(exe[0]).external_attr >> 16) & 0o777, 0o755)
                 self.assertEqual(exe[0].endswith(".exe"), "win_" in w.name)
@@ -66,7 +66,7 @@ class Packaging(unittest.TestCase):
                     self.assertEqual((digest, int(size)), (want, len(data)), path)
                 wheel = z.read(f"{info}/WHEEL").decode()
                 self.assertIn("Root-Is-Purelib: false", wheel)
-                tag = w.name[len("plumbline_agent-1.2.3-py3-none-"):-len(".whl")]
+                tag = w.name[len("tellproof_agent-1.2.3-py3-none-"):-len(".whl")]
                 for t in tag.split("."):
                     self.assertIn(f"Tag: py3-none-{t}", wheel)
                 self.assertIn("Version: 1.2.3", z.read(f"{info}/METADATA").decode())
@@ -85,25 +85,25 @@ class Packaging(unittest.TestCase):
         venv = self.tmp / "venv"
         subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
         pip = venv / "bin" / "pip"
-        r = subprocess.run([str(pip), "install", "--no-index", "--find-links", str(out), "plumbline-agent==1.2.3"], capture_output=True, text=True)
+        r = subprocess.run([str(pip), "install", "--no-index", "--find-links", str(out), "tellproof-agent==1.2.3"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        for cmd in ([str(venv / "bin" / "plumbline-agent"), "run", "--local"], [str(venv / "bin" / "python"), "-m", "plumbline_agent", "run", "--local"]):
+        for cmd in ([str(venv / "bin" / "tellproof-agent"), "run", "--local"], [str(venv / "bin" / "python"), "-m", "tellproof_agent", "run", "--local"]):
             r = subprocess.run(cmd, capture_output=True, text=True)
             self.assertEqual((r.returncode, r.stdout.strip()), (3, "stub agent: run --local"), cmd)
 
     def test_npm_packages(self):
         out = self.tmp / "npm"
         self.assertEqual(build_npm.main(["--dist", str(self.dist), "--version", "v1.2.3", "--out", str(out), "--license", str(self.license)]), 0)
-        main = json.loads((out / "plumbline-agent" / "package.json").read_text())
+        main = json.loads((out / "tellproof-agent" / "package.json").read_text())
         self.assertEqual(main["version"], "1.2.3")
-        self.assertEqual(main["bin"], {"plumbline-agent": "bin/plumbline-agent.js"})
+        self.assertEqual(main["bin"], {"tellproof-agent": "bin/tellproof-agent.js"})
         # npm's provenance check needs the repository exactly as GitHub names it (case included).
         sdk = json.loads((HERE.parent / "sdk" / "js" / "package.json").read_text()) if (HERE.parent / "sdk" / "js" / "package.json").exists() else None
-        self.assertEqual(main["repository"]["url"], "git+https://github.com/Lumetrix-Advanced-Technologies/plumbline.git")
+        self.assertEqual(main["repository"]["url"], "git+https://github.com/Lumetrix-Advanced-Technologies/tellproof.git")
         if sdk:
             self.assertEqual(sdk["repository"]["url"], main["repository"]["url"])
         self.assertNotIn("scripts", main)  # no install scripts
-        self.assertEqual(sorted(main["optionalDependencies"]), sorted(f"plumbline-agent-{o}-{c}" for o, c in build_npm.PLATFORMS.values()))
+        self.assertEqual(sorted(main["optionalDependencies"]), sorted(f"tellproof-agent-{o}-{c}" for o, c in build_npm.PLATFORMS.values()))
         self.assertTrue(all(v == "1.2.3" for v in main["optionalDependencies"].values()))
         for name in main["optionalDependencies"]:
             pj = json.loads((out / name / "package.json").read_text())
@@ -120,18 +120,18 @@ class Packaging(unittest.TestCase):
         app = self.tmp / "app"
         nm = app / "node_modules"
         nm.mkdir(parents=True)
-        shutil.copytree(out / "plumbline-agent", nm / "plumbline-agent")
-        launcher = nm / "plumbline-agent" / "bin" / "plumbline-agent.js"
+        shutil.copytree(out / "tellproof-agent", nm / "tellproof-agent")
+        launcher = nm / "tellproof-agent" / "bin" / "tellproof-agent.js"
         # Without the platform package: a clear error, not a crash.
         r = subprocess.run([node, str(launcher), "version"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 1)
         self.assertIn("no binary for", r.stderr)
-        shutil.copytree(out / f"plumbline-agent-{os_}-{cpu}", nm / f"plumbline-agent-{os_}-{cpu}")
+        shutil.copytree(out / f"tellproof-agent-{os_}-{cpu}", nm / f"tellproof-agent-{os_}-{cpu}")
         r = subprocess.run([node, str(launcher), "run", "--local"], capture_output=True, text=True)
         self.assertEqual((r.returncode, r.stdout.strip()), (3, "stub agent: run --local"), r.stderr)
 
     def test_missing_binary_fails(self):
-        (self.dist / "plumbline-agent-darwin-arm64").unlink()
+        (self.dist / "tellproof-agent-darwin-arm64").unlink()
         self.assertEqual(build_wheels.main(["--dist", str(self.dist), "--version", "1.0.0", "--out", str(self.tmp / "w"), "--license", str(self.license)]), 1)
         self.assertEqual(build_npm.main(["--dist", str(self.dist), "--version", "1.0.0", "--out", str(self.tmp / "n"), "--license", str(self.license)]), 1)
 

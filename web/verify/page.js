@@ -89,17 +89,17 @@ function tokenFromURL() {
 async function loadShareLink(token) {
   showOnly("loading");
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return loadError("This link is not valid", "The share token in this address is malformed. Check that the whole link was copied.");
-  const api = (document.querySelector('meta[name="plumbline-api"]')?.content || location.origin).replace(/\/+$/, "");
+  const api = (document.querySelector('meta[name="tellproof-api"]')?.content || location.origin).replace(/\/+$/, "");
   const get = (path) => fetch(api + path, { credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
   let res;
   try {
     res = await get(`/v1/verify/${encodeURIComponent(token)}`);
   } catch {
-    return loadError("The pack could not be loaded", "The Plumbline service did not respond. Try again, or ask the vendor for the pack file and check it offline.");
+    return loadError("The pack could not be loaded", "The Tellproof service did not respond. Try again, or ask the vendor for the pack file and check it offline.");
   }
   if (res.status === 410) return loadError("This link is no longer active", "The vendor revoked this link or it expired. Ask them for a new one.");
   if (res.status === 404) return loadError("No pack at this link", "Check that the whole link was copied.");
-  if (!res.ok) return loadError("The pack could not be loaded", `The Plumbline service answered with HTTP ${res.status}.`);
+  if (!res.ok) return loadError("The pack could not be loaded", `The Tellproof service answered with HTTP ${res.status}.`);
   let body, jwks, jwksText;
   try {
     body = await res.json();
@@ -242,7 +242,7 @@ function renderPack() {
   $("raw-envelope").textContent = r.rawText;
   $("raw-jwks").textContent = state.jwksText;
   const packArgs = state.mode === "online" ? "pack.dsse.json" : state.packs.map((x) => x.source).join(" ");
-  $("cmd").textContent = `plumbline-verify --jwks jwks.json ${packArgs}`;
+  $("cmd").textContent = `tellproof-verify --jwks jwks.json ${packArgs}`;
   $("print-footer").textContent = [
     p ? `Pack ${p.pack_id} (#${p.seq_no})` : `File ${r.source}`,
     r.digest ? r.digest : null,
@@ -357,7 +357,7 @@ function init() {
     else document.documentElement.dataset.theme = theme;
   });
   if (!(globalThis.crypto && crypto.subtle)) {
-    return loadError("This browser cannot run the checks", "Web Crypto is unavailable here (it needs HTTPS). Use plumbline-verify instead.");
+    return loadError("This browser cannot run the checks", "Web Crypto is unavailable here (it needs HTTPS). Use tellproof-verify instead.");
   }
   const token = tokenFromURL();
   if (token) loadShareLink(token).catch((err) => loadError("The pack could not be checked", err.message));

@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lumetrix-advanced-technologies/plumbline/internal/localreport"
+	"github.com/lumetrix-advanced-technologies/tellproof/internal/localreport"
 )
 
-// Acceptance (D-052): with no server and no token, `plumbline-agent local`
+// Acceptance (D-052): with no server and no token, `tellproof-agent local`
 // plus the one-line SDK init keeps a sample app's calls as signed, chained
 // batches in the data directory; nothing is sent anywhere; `report` verifies
 // the log and summarises it, and fails when a batch is edited or missing.
@@ -38,7 +38,7 @@ func TestLocalModeKeepsASignedLogThatReportVerifies(t *testing.T) {
 	_ = os.WriteFile(cfg, []byte(`{"otlp_listen": "`+listen+`", "dashboard_listen": "`+dash+`", "aggregation": {"grace_minutes": 5, "first_batch_seconds": 1}}`), 0o600)
 	// A configured server is ignored in local mode: the test fails if it is contacted.
 	getenv := func(k string) string {
-		return map[string]string{"PLUMBLINE_SERVER": server.URL, "PLUMBLINE_DATA_DIR": dataDir}[k]
+		return map[string]string{"TELLPROOF_SERVER": server.URL, "TELLPROOF_DATA_DIR": dataDir}[k]
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -57,15 +57,15 @@ func TestLocalModeKeepsASignedLogThatReportVerifies(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	app := `import plumbline
-plumbline.init(agent_url="http://` + listen + `", service="local-app")
-with plumbline.guardrail() as g, plumbline.prompt("support", "3"):
-    with plumbline.llm_call("acme-ai", "acme-7b", region="ap-southeast-2") as c:
+	app := `import tellproof
+tellproof.init(agent_url="http://` + listen + `", service="local-app")
+with tellproof.guardrail() as g, tellproof.prompt("support", "3"):
+    with tellproof.llm_call("acme-ai", "acme-7b", region="ap-southeast-2") as c:
         c.usage(200, 50)
     g.allow()
-with plumbline.llm_call("openai", "gpt-4.1-mini") as c:
+with tellproof.llm_call("openai", "gpt-4.1-mini") as c:
     c.usage(10, 5)
-assert plumbline.flush(5)`
+assert tellproof.flush(5)`
 	cmd := exec.Command(py, "-c", app)
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+filepath.Join("..", "..", "sdk", "python", "src"))
 	if b, err := cmd.CombinedOutput(); err != nil {
@@ -104,7 +104,7 @@ assert plumbline.flush(5)`
 	if !strings.Contains(out.String(), "Dashboard: http://"+dash+"/") {
 		t.Errorf("no dashboard URL in the banner: %s", out.String())
 	}
-	// The old spelling, `plumbline-agent local`, still starts local mode.
+	// The old spelling, `tellproof-agent local`, still starts local mode.
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	done2 := make(chan int, 1)
 	out2 := &lockedBuffer{}

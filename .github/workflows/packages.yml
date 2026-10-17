@@ -33,7 +33,7 @@ jobs:
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS
           # Only the agent binaries the release built (listed in SHA256SUMS), not
           # the packages an earlier run of this workflow attached.
-          files=$(awk '$2 ~ /^plumbline-agent-/ && $2 !~ /bedrock/ {print $2}' SHA256SUMS)
+          files=$(awk '$2 ~ /^tellproof-agent-/ && $2 !~ /bedrock/ {print $2}' SHA256SUMS)
           for f in $files; do gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$f"; done
           grep -F -f <(printf '%s\n' $files) SHA256SUMS | sha256sum -c -
           for f in $files; do
@@ -59,7 +59,7 @@ jobs:
         with: { name: packages, path: pkg, if-no-files-found: error }
 
   pypi:
-    # Needs a PyPI trusted publisher for plumbline-agent: this repository,
+    # Needs a PyPI trusted publisher for tellproof-agent: this repository,
     # workflow packages.yml, environment release.
     needs: build
     if: vars.PUBLISH_PACKAGES == 'true'
@@ -93,5 +93,5 @@ jobs:
             spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
             if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish "$1" --access public; fi
           }
-          for t in pkg/tarballs/plumbline-agent-*-*.tgz; do publish "$t"; done
-          publish pkg/tarballs/plumbline-agent-[0-9]*.tgz
+          for t in pkg/tarballs/tellproof-agent-*-*.tgz; do publish "$t"; done
+          publish pkg/tarballs/tellproof-agent-[0-9]*.tgz

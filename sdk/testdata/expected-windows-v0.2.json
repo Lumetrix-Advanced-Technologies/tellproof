@@ -1,0 +1,157 @@
+[
+  {
+    "window": {
+      "end": "2026-09-01T11:00:00Z",
+      "start": "2026-09-01T10:00:00Z"
+    },
+    "metrics": {
+      "agent": {
+        "escalations": 1,
+        "high_impact_approved": 1,
+        "high_impact_calls": 2,
+        "runs": 1,
+        "tool_calls": 3,
+        "tool_errors": 1
+      },
+      "anomalies": [],
+      "content_present_spans": 0,
+      "evals": [],
+      "guardrails": {
+        "blocked": 2,
+        "guarded_calls": 3,
+        "llm_calls": 4
+      },
+      "late_spans": 0,
+      "pii": {
+        "pii_spans": 2,
+        "pii_spans_redacted": 1
+      },
+      "tokens": [
+        {
+          "calls": 1,
+          "input_tokens": 3000,
+          "model": "claude-sonnet-4-5",
+          "output_tokens": 400,
+          "provider": "anthropic",
+          "region": "ap-southeast-2"
+        },
+        {
+          "calls": 1,
+          "input_tokens": 0,
+          "model": "gpt-4.1-mini",
+          "output_tokens": 0,
+          "provider": "openai",
+          "region": "unknown"
+        },
+        {
+          "calls": 1,
+          "input_tokens": 1200,
+          "model": "gpt-4.1-mini",
+          "output_tokens": 80,
+          "provider": "openai",
+          "region": "us-east-1"
+        },
+        {
+          "calls": 1,
+          "input_tokens": 0,
+          "model": "text-embedding-3-small",
+          "output_tokens": 0,
+          "provider": "openai",
+          "region": "us-east-1"
+        }
+      ],
+      "transitions": []
+    },
+    "observed": {
+      "models": [
+        {
+          "model": "claude-sonnet-4-5",
+          "provider": "anthropic"
+        },
+        {
+          "model": "gpt-4.1-mini",
+          "provider": "openai"
+        },
+        {
+          "model": "text-embedding-3-small",
+          "provider": "openai"
+        }
+      ],
+      "versions": [
+        {
+          "model": "gpt-4.1-mini",
+          "prompt_version": "14"
+        }
+      ]
+    },
+    "traces": 4
+  },
+  {
+    "window": {
+      "end": "2026-09-01T12:00:00Z",
+      "start": "2026-09-01T11:00:00Z"
+    },
+    "metrics": {
+      "agent": {
+        "escalations": 0,
+        "high_impact_approved": 0,
+        "high_impact_calls": 0,
+        "runs": 0,
+        "tool_calls": 0,
+        "tool_errors": 0
+      },
+      "anomalies": [],
+      "content_present_spans": 0,
+      "evals": [],
+      "guardrails": {
+        "blocked": 0,
+        "guarded_calls": 1,
+        "llm_calls": 1
+      },
+      "late_spans": 0,
+      "pii": {
+        "pii_spans": 0,
+        "pii_spans_redacted": 0
+      },
+      "tokens": [
+        {
+          "calls": 1,
+          "input_tokens": 900,
+          "model": "claude-sonnet-4-5",
+          "output_tokens": 60,
+          "provider": "anthropic",
+          "region": "ap-southeast-2"
+        }
+      ],
+      "transitions": [
+        {
+          "at": "2026-09-01T11:20:00Z",
+          "from": "gpt-4.1-mini",
+          "kind": "model",
+          "to": "claude-sonnet-4-5"
+        },
+        {
+          "at": "2026-09-01T11:20:00Z",
+          "from": "14",
+          "kind": "prompt",
+          "to": "15"
+        }
+      ]
+    },
+    "observed": {
+      "models": [
+        {
+          "model": "claude-sonnet-4-5",
+          "provider": "anthropic"
+        }
+      ],
+      "versions": [
+        {
+          "model": "claude-sonnet-4-5",
+          "prompt_version": "15"
+        }
+      ]
+    },
+    "traces": 1
+  }
+]

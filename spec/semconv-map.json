@@ -1,6 +1,6 @@
 {
-  "version": "v2",
-  "note": "Old and new OTel GenAI attribute names map to one internal field. The plumbline.* fields carry facts no GenAI convention defines yet (D-020); agents may override their names per deployment. Content fields are presence-only: their values are never read, and any attribute whose name starts with a presence_only_prefixes entry counts as content too.",
+  "version": "v3",
+  "note": "Old and new OTel GenAI attribute names map to one internal field. The tellproof.* fields carry facts no GenAI convention defines yet (D-020); agents may override their names per deployment. Content fields are presence-only: their values are never read, and any attribute whose name starts with a presence_only_prefixes entry counts as content too. v3: the tellproof.* names (D-056); the plumbline.* names they replace are read as aliases. tellproof.canary.kind and tellproof.canary.caught mark a guardrail canary span (D-057).",
   "fields": {
     "provider": [
       "gen_ai.provider.name",
@@ -32,28 +32,42 @@
       "gen_ai.agent.name"
     ],
     "prompt_name": [
+      "tellproof.prompt.name",
       "plumbline.prompt.name"
     ],
     "prompt_version": [
+      "tellproof.prompt.version",
       "plumbline.prompt.version"
     ],
     "pii_marker": [
+      "tellproof.data_class",
       "plumbline.data_class"
     ],
     "redacted": [
+      "tellproof.redaction.applied",
       "plumbline.redaction.applied"
     ],
     "guardrail_decision": [
+      "tellproof.guardrail.decision",
       "plumbline.guardrail.decision"
     ],
     "tool_high_impact": [
+      "tellproof.tool.high_impact",
       "plumbline.tool.high_impact"
     ],
     "tool_approved": [
+      "tellproof.tool.approved",
       "plumbline.tool.approved"
     ],
     "escalation": [
+      "tellproof.escalation",
       "plumbline.escalation"
+    ],
+    "canary_kind": [
+      "tellproof.canary.kind"
+    ],
+    "canary_caught": [
+      "tellproof.canary.caught"
     ]
   },
   "presence_only": [

@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Lumetrix-Advanced-Technologies/tellproof/main/spec/policy.schema.json",
+  "title": "Tellproof policy (tellproof.policy.json)",
+  "description": "What an AI system is meant to be: the models and regions it may use, and the change, incident and evaluation registers its evidence objectives compare telemetry with. Read by tellproof-agent check, policy init and aibom (D-055).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ai_system"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "organisation": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "ai_system": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "The AI system's name."
+    },
+    "environment": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "For example production."
+    },
+    "description": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA time zone for periods and change dates; default UTC.",
+      "examples": [
+        "Australia/Sydney",
+        "Europe/London"
+      ]
+    },
+    "declared_models": {
+      "type": "array",
+      "description": "Every model the system may use, as the agent reports provider and model (EO-LIN-01).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:/@+-]{1,128}$",
+            "examples": [
+              "openai",
+              "anthropic",
+              "aws.bedrock"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:/@+-]{1,128}$"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100
+          }
+        }
+      }
+    },
+    "declared_regions": {
+      "type": "array",
+      "description": "Every region inference may run in (EO-RES-01).",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:/@+-]{1,128}$"
+      }
+    },
+    "changes": {
+      "type": "array",
+      "description": "The material-change register (EO-CHG-01): every model or prompt change, on its local date.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "kind",
+          "what"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "kind": {
+            "enum": [
+              "model",
+              "prompt"
+            ]
+          },
+          "what": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "description": "The incident register (EO-INC-01). An anomaly hour is covered by an incident opened within an hour of it and acknowledged within an hour of opening.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "opened"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{1,40}$"
+          },
+          "opened": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "acknowledged": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "evals": {
+      "type": "array",
+      "description": "Evaluation runs recorded outside the telemetry (EO-EVAL-01), in addition to those the agent sees.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "suite",
+          "model",
+          "ran_at",
+          "pass_rate"
+        ],
+        "properties": {
+          "suite": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "ran_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pass_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "ci": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_gates"
+      ],
+      "description": "What `tellproof-agent ci verify` requires of every commit (D-058).",
+      "properties": {
+        "required_gates": {
+          "type": "array",
+          "description": "CI gates (named in `ci run --gate`) that must have run and passed on the commit.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+          }
+        },
+        "canary_gates": {
+          "type": "array",
+          "description": "Gates whose must-fail canary (`ci canary --gate`) must have been caught on the commit, showing the gate can fail.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+          }
+        }
+      }
+    }
+  }
+}

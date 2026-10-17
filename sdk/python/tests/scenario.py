@@ -14,11 +14,11 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
-import plumbline  # noqa: E402
-from plumbline import _core, _otlp  # noqa: E402
+import tellproof  # noqa: E402
+from tellproof import _core, _otlp  # noqa: E402
 
 FIXTURE = os.path.join(HERE, "..", "..", "testdata", "python-export.jsonl")
-RESOURCE = {"service.name": "claims-api", "telemetry.sdk.name": "plumbline", "telemetry.sdk.language": "python",
+RESOURCE = {"service.name": "claims-api", "telemetry.sdk.name": "tellproof", "telemetry.sdk.language": "python",
             "telemetry.sdk.version": "scenario"}
 
 
@@ -56,47 +56,53 @@ class Capture:
 def run(clock: Clock) -> None:
     """The app. Hour 10:00: four requests; hour 11:00: one."""
     # 1. A triage call on personal data, redacted, allowed by the guardrail.
-    with plumbline.trace(), plumbline.prompt("triage", "14"), plumbline.personal_data(redacted=True):
-        with plumbline.guardrail("allow"):
-            with plumbline.llm_call("openai", "gpt-4.1-mini", region="us-east-1") as c:
+    with tellproof.trace(), tellproof.prompt("triage", "14"), tellproof.personal_data(redacted=True):
+        with tellproof.guardrail("allow"):
+            with tellproof.llm_call("openai", "gpt-4.1-mini", region="us-east-1") as c:
                 c.usage(input_tokens=1200, output_tokens=80)
 
     # 2. An agent run: a model call the output guardrail then blocks, three tool
     #    calls (one high-impact approved, one high-impact unapproved that fails)
     #    and an escalation to a person.
-    with plumbline.agent_run("claims-agent"):
-        with plumbline.guardrail() as g:
-            with plumbline.llm_call("anthropic", "claude-sonnet-4-5", region="ap-southeast-2") as c:
+    with tellproof.agent_run("claims-agent"):
+        with tellproof.guardrail() as g:
+            with tellproof.llm_call("anthropic", "claude-sonnet-4-5", region="ap-southeast-2") as c:
                 c.usage(input_tokens=3000, output_tokens=400)
             g.block()
-        with plumbline.tool("lookup_policy"):
+        with tellproof.tool("lookup_policy"):
             pass
-        with plumbline.tool("issue_refund", high_impact=True) as t:
+        with tellproof.tool("issue_refund", high_impact=True) as t:
             t.approved = True
         try:
-            with plumbline.tool("close_account", high_impact=True):
+            with tellproof.tool("close_account", high_impact=True):
                 raise PermissionError("not approved")
         except PermissionError:
             pass
-        plumbline.escalation()
+        tellproof.escalation()
 
     # 3. The input guardrail blocks before any model call.
-    with plumbline.trace(), plumbline.personal_data(redacted=False):
-        with plumbline.guardrail("block", provider="openai", model="gpt-4.1-mini"):
+    with tellproof.trace(), tellproof.personal_data(redacted=False):
+        with tellproof.guardrail("block", provider="openai", model="gpt-4.1-mini"):
             pass
 
     # 4. A failed embeddings call outside any scope.
     try:
-        with plumbline.llm_call("openai", "text-embedding-3-small", operation="embeddings", region="us-east-1"):
+        with tellproof.llm_call("openai", "text-embedding-3-small", operation="embeddings", region="us-east-1"):
             raise TimeoutError()
     except TimeoutError:
         pass
 
     # 5. The next hour: the triage prompt moves to version 15 on another model.
     clock.at("2026-09-01T11:20:00")
-    with plumbline.prompt("triage", "15"), plumbline.guardrail("flag"):
-        with plumbline.llm_call("anthropic", "claude-sonnet-4-5", region="ap-southeast-2") as c:
+    with tellproof.prompt("triage", "15"), tellproof.guardrail("flag"):
+        with tellproof.llm_call("anthropic", "claude-sonnet-4-5", region="ap-southeast-2") as c:
             c.usage(input_tokens=900, output_tokens=60)
+
+    # 6. Guardrail canaries (D-057): the guardrail catches the injection probe
+    #    and one of two personal-data probes.
+    tellproof.canary("prompt_injection", "block")
+    tellproof.canary("pii", True)
+    tellproof.canary("pii", "allow")
 
 
 def export_lines() -> list[str]:
