@@ -75,6 +75,9 @@ jobs:
   npm:
     # npm Trusted Publishing: each package names this workflow and the release
     # environment, so npm checks GitHub's OIDC token and no npm token is stored.
+    # npm cannot trust a package that does not exist yet, so a package's first
+    # publish uses the repository secret NPM_TOKEN when it is set (a short-lived
+    # granular token with 2FA bypass; delete the secret afterwards).
     # Platform packages first, so the main package's optional dependencies
     # exist when it lands; versions already on npm are skipped.
     needs: build
@@ -88,7 +91,8 @@ jobs:
       - run: npm install -g npm@^11.5.1 && npm --version   # trusted publishing needs npm 11.5.1+
       - uses: actions/download-artifact@v4
         with: { name: packages, path: pkg }
-      - run: |
+      - env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
+        run: |
           publish() {
             spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
             if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish "$1" --access public; fi

@@ -51,8 +51,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
       - run: npm install -g npm@^11.5.1 && npm --version   # npm Trusted Publishing needs npm 11.5.1+
-      - name: Publish (npm Trusted Publishing, no stored token)
+      - name: Publish (npm Trusted Publishing; the NPM_TOKEN secret only for a first publish)
         working-directory: sdk/js
+        env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
         run: |
           spec="$(node -p 'require("./package.json").name')@$(node -p 'require("./package.json").version')"
           if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish --access public; fi
