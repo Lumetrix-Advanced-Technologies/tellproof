@@ -84,11 +84,12 @@ jobs:
         with: { packages-dir: pkg/pypi, skip-existing: true }
 
   npm:
-    # Needs an npm trusted publisher on each of the seven packages
-    # (tellproof-agent and tellproof-agent-<os>-<cpu>): this repository,
-    # workflow packages.yml, environment release. Platform packages first, so
-    # the main package's optional dependencies exist when it lands; versions
-    # already on npm are skipped. npm adds provenance automatically.
+    # Staged publishing (D-062): each version is staged with the package's npm
+    # trusted publisher (this repository, workflow packages.yml, environment
+    # release; stage-only) and goes live only when a maintainer approves it
+    # with 2FA in npmjs.com's Staged Packages, platform packages before
+    # tellproof-agent so its optional dependencies exist when it lands.
+    # Versions already on npm, or already staged, are skipped.
     needs: build
     if: vars.PUBLISH_PACKAGES == 'true'
     runs-on: ubuntu-latest
@@ -97,14 +98,23 @@ jobs:
     steps:
       - uses: actions/setup-node@v4
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
-      - run: npm install -g npm@^11.5.1 && npm --version   # trusted publishing needs npm 11.5.1+
+      - run: npm install -g "npm@>=11.15.0 <13" && npm --version   # npm stage needs npm 11.15.0+
       - uses: actions/download-artifact@v4
         with: { name: packages, path: pkg }
-      - run: |
-          publish() {
+      - name: Stage for approval on npmjs.com
+        run: |
+          stage() {
             spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
             if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; return; fi
-            npm publish "./$1" --access public   # "./": a bare dir/x.tgz is read as a GitHub owner/repo
+            # "./": a bare dir/x.tgz is read as a GitHub owner/repo.
+            if npm stage publish "./$1" --access public 2> err.txt; then
+              echo "- \`$spec\` staged" >> "$GITHUB_STEP_SUMMARY"
+            elif grep -q E409 err.txt; then
+              echo "$spec is already staged"; echo "- \`$spec\` was already staged" >> "$GITHUB_STEP_SUMMARY"
+            else
+              cat err.txt; return 1
+            fi
           }
-          for t in pkg/tarballs/tellproof-agent-*-*.tgz; do publish "$t"; done
-          publish pkg/tarballs/tellproof-agent-[0-9]*.tgz
+          echo "### npm: approve on npmjs.com → Staged Packages, platform packages first" >> "$GITHUB_STEP_SUMMARY"
+          for t in pkg/tarballs/tellproof-agent-*-*.tgz; do stage "$t"; done
+          stage pkg/tarballs/tellproof-agent-[0-9]*.tgz

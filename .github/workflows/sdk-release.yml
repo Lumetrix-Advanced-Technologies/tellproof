@@ -53,8 +53,9 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   npm:
-    # Needs an npm trusted publisher on tellproof: this repository, workflow
-    # sdk-release.yml, environment release. npm adds provenance automatically.
+    # Staged publishing (D-062): staged with tellproof's npm trusted publisher
+    # (this repository, workflow sdk-release.yml, environment release;
+    # stage-only); live once a maintainer approves it with 2FA on npmjs.com.
     needs: check
     runs-on: ubuntu-latest
     environment: release
@@ -63,9 +64,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
-      - run: npm install -g npm@^11.5.1 && npm --version   # trusted publishing needs npm 11.5.1+
-      - name: Publish (trusted publishing; skipped when the version is on npm)
+      - run: npm install -g "npm@>=11.15.0 <13" && npm --version   # npm stage needs npm 11.15.0+
+      - name: Stage for approval on npmjs.com (skipped when on npm or already staged)
         working-directory: sdk/js
         run: |
           spec="$(node -p 'require("./package.json").name')@$(node -p 'require("./package.json").version')"
-          if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish --access public; fi
+          if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; exit 0; fi
+          if npm stage publish --access public 2> err.txt; then
+            echo "### npm: \`$spec\` staged; approve it on npmjs.com → Staged Packages" >> "$GITHUB_STEP_SUMMARY"
+          elif grep -q E409 err.txt; then
+            echo "$spec is already staged"
+          else
+            cat err.txt; exit 1
+          fi

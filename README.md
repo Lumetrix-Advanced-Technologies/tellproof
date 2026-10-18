@@ -265,7 +265,7 @@ npm install tellproof                      # the SDK, in your app
 
 ### Check a download
 
-Every release binary, `SHA256SUMS`, the release notes, the wheels, the npm tarballs and the container image carry signed build provenance (SLSA, through GitHub artifact attestations) that ties them to this repository's source and release workflows. npm packages published from the release workflow also carry npm provenance; v0.3.0's npm packages were published by hand from the release's attested tarballs, so check those against the tarballs on the release page.
+Every release binary, `SHA256SUMS`, the release notes, the wheels, the npm tarballs and the container image carry signed build provenance (SLSA, through GitHub artifact attestations) that ties them to this repository's source and release workflows. npm packages come from the release workflow through staged publishing: the workflow stages the attested tarballs and a maintainer approves each version with two-factor authentication on npmjs.com, so nothing reaches npm without a person. v0.3.0's were published by hand from the same attested tarballs; check them against the tarballs on the release page.
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
