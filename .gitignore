@@ -5,3 +5,4 @@ node_modules/
 .tellproof-agent/
 .tellproof-ci/
 *.test
+*.egg-info/
