@@ -197,13 +197,16 @@ docker run -d --name tellproof-agent -p 127.0.0.1:4318:4318 -p 127.0.0.1:4319:43
   -v tellproof-agent:/data ghcr.io/lumetrix-advanced-technologies/tellproof-agent:latest run --local
 ```
 
-It prints its agent ID, where it listens, and the dashboard address:
+In a terminal it greets you, then shows where it listens for spans, the dashboard address, where the signed evidence is kept, and its agent ID. Run `tellproof-agent` on its own for the welcome and first steps:
 
-```
-tellproof-agent v0.2.0 in local mode as agt_local73a55408e4b8f1c62de97a60: listening for spans on 127.0.0.1:4318; signed batches are kept in .tellproof-agent/local and never sent.
-Dashboard: http://127.0.0.1:4319/
-In a terminal: tellproof-agent report
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.png">
+    <img src="docs/banner.png" alt="The Tellproof welcome banner in a terminal: the TELLPROOF wordmark beside the bolt-and-stripe mark, then the first commands to run" width="720">
+  </picture>
+</p>
+
+The banner appears only in an interactive terminal (from v0.4.0). Pipes, files, CI and `TELLPROOF_NO_BANNER=1` get the plain lines and the JSON log, unchanged; `NO_COLOR` keeps the banner without colour.
 
 **2. Add the SDK to your app.**
 
@@ -241,9 +244,28 @@ tellproof.init();
 | **Binary** | [Releases](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases) | `tellproof-agent-<os>-<arch>`; use `tellproof-agent-bedrock-*` for Amazon Bedrock usage from CloudWatch. |
 | **Source** | `go install github.com/lumetrix-advanced-technologies/tellproof/cmd/agent@latest` | Go 1.26+. Add `-tags bedrock` for the Bedrock usage poller. |
 
+### With npm
+
+The agent and the SDK are both on npm, for Node.js 18 and later. npm, pnpm, Yarn and Bun all work.
+
+```bash
+npx tellproof-agent run --local            # try it without installing anything
+npm install -g tellproof-agent             # or put it on your PATH ...
+tellproof-agent                            # ... the welcome banner and first steps
+tellproof-agent run --local
+
+npm install --save-dev tellproof-agent     # or pin it per project: npx tellproof-agent run --local
+npm install tellproof                      # the SDK, in your app
+```
+
+- **How it installs:** `tellproof-agent` is a small launcher; the binary for your platform comes in one of six packages (`tellproof-agent-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64`, `-win32-x64`, `-win32-arm64`) that npm picks through `optionalDependencies`. Nothing runs at install time: no install scripts, no downloads.
+- **"no binary for …":** your platform is not one of those six, or optional dependencies were left out (`--omit=optional`, `--no-optional`, or `optional=false` in `.npmrc`). Reinstall without that, or use a [release binary](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases).
+- **Upgrade and remove:** `npm install -g tellproof-agent@latest`; `npm uninstall -g tellproof-agent`. The data directory (`./.tellproof-agent`) is yours and stays where it is.
+- **The SDK** ships CommonJS and ES modules with TypeScript types, and no dependencies: `import * as tellproof from 'tellproof'` or `const tellproof = require('tellproof')`.
+
 ### Check a download
 
-Every release binary, `SHA256SUMS`, the release notes, the wheels, the npm tarballs and the container image carry signed build provenance (SLSA, through GitHub artifact attestations) that ties them to this repository's source and release workflows. The npm packages also carry npm provenance.
+Every release binary, `SHA256SUMS`, the release notes, the wheels, the npm tarballs and the container image carry signed build provenance (SLSA, through GitHub artifact attestations) that ties them to this repository's source and release workflows. npm packages published from the release workflow also carry npm provenance; v0.3.0's npm packages were published by hand from the release's attested tarballs, so check those against the tarballs on the release page.
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
@@ -802,6 +824,7 @@ Secrets are never written in the file. Each `*_env` key names the environment va
 | `TELLPROOF_OTLP_ALLOW_REMOTE=1` | `otlp_allow_remote` | Set in the container image, whose documented commands publish ports on the host's loopback only. |
 | `TELLPROOF_ENROL_TOKEN` | | The token for `enrol` and `connect` when it is not given on the command line. |
 | `TELLPROOF_SALT_SECRET` | | The default salt variable. |
+| `TELLPROOF_NO_BANNER=1` | | No welcome banner, even in a terminal (also off in pipes, files, CI and `TERM=dumb`). `NO_COLOR` keeps it without colour. |
 | SDK: `TELLPROOF_AGENT_URL`, `TELLPROOF_SERVICE`, `TELLPROOF_ENVIRONMENT`, `TELLPROOF_DISABLED` | | See [Instrument your app](#instrument-your-app). |
 
 ---
@@ -1050,6 +1073,7 @@ The full statement is on the [security page](web/security/index.html).
 ### tellproof-agent
 
 ```
+tellproof-agent                                   # in a terminal: the welcome banner and first steps
 tellproof-agent run --local [--config <agent.json>]
 tellproof-agent report [--config <agent.json>] [--data-dir <dir>] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
 tellproof-agent dashboard [--config <agent.json>] [--data-dir <dir>] [--listen <host:port>]

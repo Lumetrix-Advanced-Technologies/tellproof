@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/tellproof/__init__.py
+src/tellproof/_canary.py
+src/tellproof/_core.py
+src/tellproof/_export.py
+src/tellproof/_instrument.py
+src/tellproof/_otlp.py
+src/tellproof/py.typed
+src/tellproof.egg-info/PKG-INFO
+src/tellproof.egg-info/SOURCES.txt
+src/tellproof.egg-info/dependency_links.txt
+src/tellproof.egg-info/top_level.txt
+tests/test_instrument.py
+tests/test_real_libs.py
+tests/test_sdk.py

@@ -44,6 +44,7 @@ import (
 var version = "dev"
 
 const usage = `usage:
+  tellproof-agent                    (in a terminal: the welcome banner and first steps)
   tellproof-agent run --local [--config <agent.json>]
   tellproof-agent report [--config <agent.json>] [--data-dir <dir>] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
   tellproof-agent dashboard [--config <agent.json>] [--data-dir <dir>] [--listen <host:port>]
@@ -75,6 +76,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 	if isCI(args) {
 		return ciCommand(ctx, args, getenv, stdout, stderr)
+	}
+	if len(args) == 0 && welcome(stdout, getenv) {
+		return 0 // in a terminal, no arguments shows the welcome; elsewhere it still means run
 	}
 	cmd := "run"
 	if len(args) > 0 && (args[0] == "run" || args[0] == "enrol" || args[0] == "connect" || args[0] == "version" || args[0] == "local" || args[0] == "report" || args[0] == "dashboard") {
@@ -262,6 +266,11 @@ func connect(ctx context.Context, configPath, token string, getenv func(string) 
 // local runs the agent with no server (D-052): batches are signed with the
 // agent's own key and kept in the data directory, for `report` to read.
 func local(ctx context.Context, configPath string, getenv func(string) string, stdout, stderr io.Writer, log *slog.Logger) int {
+	if interactive, _, _ := terminal(stdout, getenv); interactive {
+		// Under the banner, only warnings and errors, as text; scripts and
+		// logs (no terminal, or TELLPROOF_NO_BANNER) keep the JSON log.
+		log = slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	}
 	cfg, err := agent.LoadConfig(configPath, getenv)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -290,12 +299,17 @@ func local(ctx context.Context, configPath string, getenv func(string) string, s
 		return 1
 	}
 	defer stopDash()
-	fmt.Fprintf(stdout, "tellproof-agent %s in local mode as %s: listening for spans on %s; signed batches are kept in %s and never sent.\n",
-		version, a.AgentID(), cfg.OTLPListen, filepath.Join(cfg.DataDir, agent.LocalDir))
-	if url != "" {
-		fmt.Fprintf(stdout, "Dashboard: %s\n", url)
+	logDir := filepath.Join(cfg.DataDir, agent.LocalDir)
+	if showBanner(stdout, getenv, "Local mode") {
+		localStatus(stdout, getenv, a.AgentID(), cfg.OTLPListen, url, logDir)
+	} else {
+		fmt.Fprintf(stdout, "tellproof-agent %s in local mode as %s: listening for spans on %s; signed batches are kept in %s and never sent.\n",
+			version, a.AgentID(), cfg.OTLPListen, logDir)
+		if url != "" {
+			fmt.Fprintf(stdout, "Dashboard: %s\n", url)
+		}
+		fmt.Fprintln(stdout, "In a terminal: tellproof-agent report")
 	}
-	fmt.Fprintln(stdout, "In a terminal: tellproof-agent report")
 	if err := a.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("agent stopped", "error", err.Error())
 		return 1

@@ -2,6 +2,11 @@
 
 Each release's section is its release notes: the release workflow publishes the section whose heading is the tag, and attests it with the binaries.
 
+## v0.4.0
+
+- **A welcome in the terminal.** `tellproof-agent` on its own shows the Tellproof banner and the first commands to run, and `run --local` starts with the banner and a short status block (where spans go, the dashboard, where the signed evidence is kept, the agent ID) instead of the JSON log. Only in an interactive terminal: pipes, files, CI, `TERM=dumb` and `TELLPROOF_NO_BANNER=1` get exactly the output they got before; `NO_COLOR` keeps the banner without colour. It adapts to narrow terminals.
+- **npm releases are automated again**, like PyPI: the release workflow publishes `tellproof-agent` and its six platform packages, and the SDK workflow publishes `tellproof`, through npm trusted publishing with provenance, after approval. Both workflows now install the built pip and npm packages and run them before anything is published.
+
 ## v0.3.0
 
 Plumbline is now **Tellproof**, and governance as code.

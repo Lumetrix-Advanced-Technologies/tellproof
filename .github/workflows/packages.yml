@@ -2,10 +2,11 @@
 # binaries: it runs when a release is published, or by hand for any release
 # tag. Packages are built only from binaries whose checksums match the
 # release's SHA256SUMS and whose provenance says release.yml built them, then
-# attested and attached to the release. Publishing to PyPI runs only when the
-# repository variable PUBLISH_PACKAGES is "true", after approval in the
-# `release` environment. The npm tarballs are published by hand from the
-# release's assets (D-060): platform packages first, then tellproof-agent.
+# attested and attached to the release, after a smoke test installs them and
+# runs the agent. Publishing to PyPI and npm runs only when the repository
+# variable PUBLISH_PACKAGES is "true", after approval in the `release`
+# environment, through trusted publishing on both (GitHub's OIDC token; no
+# registry token is stored) (D-061).
 name: packages
 on:
   release:
@@ -49,6 +50,15 @@ jobs:
           mkdir -p pkg/tarballs
           for d in pkg/npm/*/; do (cd "$d" && npm pack --pack-destination "$GITHUB_WORKSPACE/pkg/tarballs" > /dev/null); done
           ls -l pkg/pypi pkg/tarballs
+      - name: Smoke test (install the packages for this runner and run the agent)
+        run: |
+          v="${TAG#v}"
+          python3 -m venv /tmp/py && /tmp/py/bin/pip install --quiet pkg/pypi/tellproof_agent-*manylinux*x86_64*.whl
+          /tmp/py/bin/tellproof-agent version | grep -qx "tellproof-agent v$v"
+          mkdir -p /tmp/npm && cd /tmp/npm && npm init -y > /dev/null
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-linux-x64-*.tgz "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-[0-9]*.tgz > /dev/null
+          npx --no-install tellproof-agent version | grep -qx "tellproof-agent v$v"
+          echo "pip and npm packages install and run: tellproof-agent v$v"
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -72,3 +82,29 @@ jobs:
         with: { name: packages, path: pkg }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with: { packages-dir: pkg/pypi, skip-existing: true }
+
+  npm:
+    # Needs an npm trusted publisher on each of the seven packages
+    # (tellproof-agent and tellproof-agent-<os>-<cpu>): this repository,
+    # workflow packages.yml, environment release. Platform packages first, so
+    # the main package's optional dependencies exist when it lands; versions
+    # already on npm are skipped. npm adds provenance automatically.
+    needs: build
+    if: vars.PUBLISH_PACKAGES == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
+      - run: npm install -g npm@^11.5.1 && npm --version   # trusted publishing needs npm 11.5.1+
+      - uses: actions/download-artifact@v4
+        with: { name: packages, path: pkg }
+      - run: |
+          publish() {
+            spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
+            if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; return; fi
+            npm publish "./$1" --access public   # "./": a bare dir/x.tgz is read as a GitHub owner/repo
+          }
+          for t in pkg/tarballs/tellproof-agent-*-*.tgz; do publish "$t"; done
+          publish pkg/tarballs/tellproof-agent-[0-9]*.tgz
