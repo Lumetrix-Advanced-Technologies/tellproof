@@ -2,9 +2,10 @@
 # binaries: it runs when a release is published, or by hand for any release
 # tag. Packages are built only from binaries whose checksums match the
 # release's SHA256SUMS and whose provenance says release.yml built them, then
-# attested and attached to the release. Publishing to PyPI and npm runs only
-# when the repository variable PUBLISH_PACKAGES is "true", after approval in
-# the `release` environment.
+# attested and attached to the release. Publishing to PyPI runs only when the
+# repository variable PUBLISH_PACKAGES is "true", after approval in the
+# `release` environment. The npm tarballs are published by hand from the
+# release's assets (D-060): platform packages first, then tellproof-agent.
 name: packages
 on:
   release:
@@ -71,31 +72,3 @@ jobs:
         with: { name: packages, path: pkg }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with: { packages-dir: pkg/pypi, skip-existing: true }
-
-  npm:
-    # npm Trusted Publishing: each package names this workflow and the release
-    # environment, so npm checks GitHub's OIDC token and no npm token is stored.
-    # npm cannot trust a package that does not exist yet, so a package's first
-    # publish uses the repository secret NPM_TOKEN when it is set (a short-lived
-    # granular token with 2FA bypass; delete the secret afterwards).
-    # Platform packages first, so the main package's optional dependencies
-    # exist when it lands; versions already on npm are skipped.
-    needs: build
-    if: vars.PUBLISH_PACKAGES == 'true'
-    runs-on: ubuntu-latest
-    environment: release
-    permissions: { contents: read, id-token: write }
-    steps:
-      - uses: actions/setup-node@v4
-        with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
-      - run: npm install -g npm@^11.5.1 && npm --version   # trusted publishing needs npm 11.5.1+
-      - uses: actions/download-artifact@v4
-        with: { name: packages, path: pkg }
-      - env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
-        run: |
-          publish() {
-            spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
-            if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish "$1" --access public; fi
-          }
-          for t in pkg/tarballs/tellproof-agent-*-*.tgz; do publish "$t"; done
-          publish pkg/tarballs/tellproof-agent-[0-9]*.tgz

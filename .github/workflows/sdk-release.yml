@@ -1,8 +1,8 @@
-# Publishes the SDKs when a maintainer pushes a tag sdk-vX.Y.Z whose version
-# matches sdk/python/pyproject.toml and sdk/js/package.json (D-050). Each
-# publish waits for approval in the `release` environment. PyPI uses trusted
-# publishing and npm Trusted Publishing, both through GitHub's OIDC token: no
-# registry token is stored. npm adds provenance automatically.
+# Publishes the Python SDK to PyPI when a maintainer pushes a tag sdk-vX.Y.Z
+# whose version matches sdk/python/pyproject.toml and sdk/js/package.json
+# (D-050), after approval in the `release` environment, with trusted
+# publishing (GitHub's OIDC token; no registry token is stored). The npm SDK
+# is published by hand (D-060): npm pack in sdk/js, then npm publish.
 name: sdk-release
 on:
   push:
@@ -40,20 +40,3 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install build && python -m build sdk/python --outdir dist
       - uses: pypa/gh-action-pypi-publish@release/v1
-
-  npm:
-    needs: check
-    runs-on: ubuntu-latest
-    environment: release
-    permissions: { contents: read, id-token: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
-      - run: npm install -g npm@^11.5.1 && npm --version   # npm Trusted Publishing needs npm 11.5.1+
-      - name: Publish (npm Trusted Publishing; the NPM_TOKEN secret only for a first publish)
-        working-directory: sdk/js
-        env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
-        run: |
-          spec="$(node -p 'require("./package.json").name')@$(node -p 'require("./package.json").version')"
-          if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; else npm publish --access public; fi
