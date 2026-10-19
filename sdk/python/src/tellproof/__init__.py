@@ -29,7 +29,7 @@ from ._core import (Guardrail, agent_run, approve, escalation, guardrail, guardr
                     personal_data, prompt, redactor, tool, trace)
 from ._export import Exporter, Transport, http_transport
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 __all__ = ["init", "shutdown", "flush", "stats", "is_enabled", "guardrail_check", "redactor", "tool", "approve",
            "escalation", "trace", "prompt", "guardrail", "Guardrail", "personal_data", "agent_run", "llm_call",
            "canary", "run_canaries", "arun_canaries", "schedule_canaries", "PROBES", "__version__"]

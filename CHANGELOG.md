@@ -4,6 +4,8 @@ Each release's section is its release notes: the release workflow publishes the 
 
 ## Unreleased
 
+- **SDKs 0.3.2** require agent 0.5.1 or later (the `[agent]` extra, the npm optional dependency), so upgrading the SDK alone also brings `tellproof --version`.
+
 ## v0.5.1
 
 `tellproof --version`, and a stronger supply chain.

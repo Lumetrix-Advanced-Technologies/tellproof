@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tellproof"
-version = "0.3.1"
+version = "0.3.2"
 description = "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Tellproof agent."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ classifiers = [
 # The agent, for local development: pip install "tellproof[agent]". Production
 # installs need only tellproof; the agent runs beside the app (D-067).
 [project.optional-dependencies]
-agent = ["tellproof-agent>=0.5.0,<1"]
+agent = ["tellproof-agent>=0.5.1,<1"]
 
 [project.scripts]
 tellproof = "tellproof._cli:main"
