@@ -8,6 +8,8 @@ on:
   push:
     tags: ["sdk-v*"]
 permissions: {}
+# npm stage needs npm 11.15.0+; an exact version, run with npx (update it by hand).
+env: { NPM_VERSION: "11.21.1" }
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -32,19 +34,20 @@ jobs:
       - name: Smoke test (build both packages, install them, import them)
         env: { V: "${{ steps.v.outputs.version }}" }
         run: |
-          python -m venv /tmp/py && /tmp/py/bin/pip install --quiet build
+          python -m venv /tmp/py && /tmp/py/bin/pip install --quiet --require-hashes -r .github/requirements/build.txt
           /tmp/py/bin/python -m build sdk/python --outdir /tmp/dist > /dev/null
           /tmp/py/bin/pip install --quiet /tmp/dist/tellproof-*.whl
           /tmp/py/bin/python -c "import os, tellproof; assert tellproof.__version__ == os.environ['V']; print('python', tellproof.__version__)"
           (cd sdk/js && npm pack --pack-destination /tmp > /dev/null)
-          mkdir -p /tmp/npm && cd /tmp/npm && npm init -y > /dev/null && npm install --no-audit --no-fund "/tmp/tellproof-$V.tgz" > /dev/null
-          node -e 'const t = require("tellproof"); if (t.VERSION !== process.env.V) process.exit(1); console.log("node", t.VERSION)'
-          node --input-type=module -e 'import t from "tellproof"; console.log("esm", t.VERSION)'
+          mkdir -p /tmp/npm && tar xzf "/tmp/tellproof-$V.tgz" -C /tmp/npm   # the files the package ships
+          node -e 'const t = require("/tmp/npm/package"); if (t.VERSION !== process.env.V) process.exit(1); console.log("node", t.VERSION)'
+          node --input-type=module -e 'import t from "/tmp/npm/package/lib/index.mjs"; console.log("esm", t.VERSION)'
           # One install brings the agent (D-067): the extra on PyPI, the optional dependency on npm.
           # The agent release the extra names must be published first.
-          /tmp/py/bin/pip install --quiet "$(ls /tmp/dist/tellproof-*.whl)[agent]"
+          /tmp/py/bin/pip download --quiet --dest /tmp/withagent "$(ls /tmp/dist/tellproof-*.whl)[agent]"   # resolves the extra on PyPI
+          /tmp/py/bin/pip install --quiet /tmp/withagent/*.whl
           /tmp/py/bin/tellproof version | grep '^tellproof-agent v'
-          npx --no-install tellproof version | grep '^tellproof-agent v'
+          npx --yes --package "/tmp/tellproof-$V.tgz" -- tellproof version | grep '^tellproof-agent v'
 
   pypi:
     needs: check
@@ -56,7 +59,7 @@ jobs:
         with: { persist-credentials: false }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - run: pip install build && python -m build sdk/python --outdir dist
+      - run: pip install --require-hashes -r .github/requirements/build.txt && python -m build sdk/python --outdir dist
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   npm:
@@ -72,10 +75,11 @@ jobs:
         with: { persist-credentials: false }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
-      - run: npm install -g "npm@>=11.15.0 <13" && npm --version   # npm stage needs npm 11.15.0+
+      - run: npx --yes "npm@$NPM_VERSION" --version
       - name: Stage for approval on npmjs.com (skipped when on npm or already staged)
         working-directory: sdk/js
         run: |
+          npm() { npx --yes "npm@$NPM_VERSION" "$@"; }
           spec="$(node -p 'require("./package.json").name')@$(node -p 'require("./package.json").version')"
           if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; exit 0; fi
           if npm stage publish --access public 2> err.txt; then

@@ -55,6 +55,18 @@ class CLITest(unittest.TestCase):
                 self.assertIn("not installed", r.stderr)
             self.assertFalse(os.path.exists(marker), "the planted agent ran")
 
+    @unittest.skipIf(os.name == "nt", "a shell script stands in for the agent")
+    def test_it_tells_the_agent_its_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = os.path.join(d, "tellproof-agent")
+            with open(fake, "w") as f:
+                f.write('#!/bin/sh\necho "$TELLPROOF_SDK"\n')
+            os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
+            r = tellproof(["--version"], d)
+        sys.path.insert(0, SRC)
+        import tellproof as sdk
+        self.assertEqual(r.stdout.strip(), f"tellproof {sdk.__version__} (Python SDK)")
+
     def test_importing_the_sdk_does_not_load_the_command(self):
         r = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, %r); import tellproof; "
                             "print('tellproof._cli' in sys.modules)" % SRC], capture_output=True, text=True, timeout=30)

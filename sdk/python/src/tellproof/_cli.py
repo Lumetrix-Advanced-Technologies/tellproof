@@ -48,7 +48,10 @@ def main(argv=None):
             f"    {INSTALL}\n\n"
             "or download it from https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases\n")
         return 1
-    # argv[0] "tellproof": the agent then suggests `tellproof ...` commands.
+    # argv[0] "tellproof": the agent then suggests `tellproof ...` commands;
+    # TELLPROOF_SDK: `tellproof --version` shows this SDK's version too.
+    from . import __version__
+    os.environ["TELLPROOF_SDK"] = f"tellproof {__version__} (Python SDK)"
     if os.name == "nt":
         try:
             return subprocess.call(["tellproof", *args], executable=path)

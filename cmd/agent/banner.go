@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -349,4 +351,48 @@ func localStatus(w io.Writer, getenv func(string) string, agentID, otlp, dashboa
 	row("Agent", agentID, version)
 	fmt.Fprintln(w, "\n  "+p.fg(colMuted, "In another terminal: "+progName()+" report  ·  Ctrl-C or "+progName()+" stop to stop"))
 	fmt.Fprintln(w)
+}
+
+// sdkRE is the only form of TELLPROOF_SDK, which the SDKs' tellproof
+// launchers set, that --version prints: a value from anywhere else could
+// carry terminal escapes.
+var sdkRE = regexp.MustCompile(`^tellproof [0-9A-Za-z.+-]{1,32} \((Python|Node\.js) SDK\)$`)
+
+// sdkVersion is the SDK that started the agent as tellproof, or "".
+func sdkVersion(getenv func(string) string) string {
+	if v := getenv("TELLPROOF_SDK"); sdkRE.MatchString(v) {
+		return v
+	}
+	return ""
+}
+
+// printVersion is --version: the banner and the versions in a terminal; for
+// scripts, the agent's version on the first line as before, then the SDK's.
+func printVersion(w io.Writer, getenv func(string) string) {
+	sdk := sdkVersion(getenv)
+	ok, width, p := terminal(w, getenv)
+	if !ok {
+		fmt.Fprintf(w, "tellproof-agent %s\n", version)
+		if sdk != "" {
+			fmt.Fprintln(w, sdk)
+		}
+		return
+	}
+	fmt.Fprint(w, versionText(p, width, sdk))
+}
+
+// versionText is --version in a terminal: the banner, then the versions.
+func versionText(p palette, width int, sdk string) string {
+	var b strings.Builder
+	b.WriteString("\n" + renderBanner(p, width, version, "Evidence agent") + "\n")
+	row := func(k, v string) {
+		b.WriteString("  " + p.fg(colLetter, "●") + " " + pad(p.bold(k), 10) + v + "\n")
+	}
+	row("Agent", "tellproof-agent "+version)
+	if sdk != "" {
+		row("SDK", sdk)
+	}
+	row("Platform", runtime.GOOS+"/"+runtime.GOARCH)
+	b.WriteString("\n")
+	return b.String()
 }

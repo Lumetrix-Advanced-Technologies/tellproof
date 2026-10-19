@@ -4,6 +4,14 @@ Each release's section is its release notes: the release workflow publishes the 
 
 ## Unreleased
 
+## v0.5.1
+
+`tellproof --version`, and a stronger supply chain.
+
+- **`tellproof --version`** (also `-v`, `-V` and `version`) shows the agent's version and, run through the SDK's `tellproof` command, the SDK's: `tellproof 0.3.1 (Python SDK)`. In a terminal it comes with the banner and the platform; for scripts the first line is unchanged (`tellproof-agent v0.5.1`). SDKs 0.3.1.
+- Troubleshooting: `tellproof: command not found` (npm installs need `npx tellproof`), and `npx` in a folder whose path contains `:`.
+- **Supply chain**: every release now carries its signed provenance as a `.intoto.jsonl` asset (added to v0.1.0 to v0.5.0 too); the Python tools the release workflows install are pinned by hash, the agent image's base images by digest, and npm runs at an exact version. `SECURITY.md` gives the private report link, timelines and supported versions.
+
 ## v0.5.0
 
 Tellproof is now one install and one line: `pip install "tellproof[agent]"` or `npm install tellproof`, then `tellproof init`. Web requests are scoped automatically, your own guardrail and redaction functions are marked once, and the agent runs in the background with `tellproof start` and `tellproof stop`. This release also closes a content gap the new leak suite found and hardens everything an adopting project runs.

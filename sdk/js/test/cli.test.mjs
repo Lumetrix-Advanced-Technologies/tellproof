@@ -46,6 +46,14 @@ test('an agent in the working directory is never run', { skip: process.platform 
   assert.equal(existsSync(marker), false, 'the planted agent ran');
 });
 
+test('tellproof tells the agent its version', { skip: process.platform === 'win32' }, () => {
+  const d = mkdtempSync(path.join(tmpdir(), 'tp-ver-'));
+  writeFileSync(path.join(d, 'tellproof-agent'), '#!/bin/sh\necho "$TELLPROOF_SDK"\n');
+  chmodSync(path.join(d, 'tellproof-agent'), 0o755);
+  const r = tellproof(['--version'], d);
+  assert.equal(r.stdout.trim(), `tellproof ${pkg.version} (Node.js SDK)`);
+});
+
 test('the only dependency is the optional agent, and the SDK never loads the command', () => {
   assert.deepEqual(pkg.dependencies, {});
   assert.deepEqual(Object.keys(pkg.optionalDependencies), ['tellproof-agent']);

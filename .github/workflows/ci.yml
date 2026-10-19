@@ -13,7 +13,7 @@ jobs:
         with: { node-version: "22" }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - run: pip install cryptography
+      - run: pip install --require-hashes -r .github/requirements/ci.txt   # cryptography, pinned by hash (Dependabot updates it)
       - run: make check
       - run: make release-binaries VERSION=ci && make release-sums
 

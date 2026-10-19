@@ -30,7 +30,7 @@ jobs:
         with: { node-version: "22" }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - run: pip install cryptography
+      - run: pip install --require-hashes -r .github/requirements/ci.txt   # cryptography, pinned by hash (Dependabot updates it)
       - run: make check
       - name: The tag has release notes
         run: scripts/release-notes.sh "$GITHUB_REF_NAME" > /dev/null
@@ -76,7 +76,13 @@ jobs:
           dist/tellproof-verify-linux-amd64 --version | grep -qx "tellproof-verify $GITHUB_REF_NAME"
           dist/tellproof-agent-linux-amd64 version | grep -q "tellproof-agent $GITHUB_REF_NAME"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
         with: { subject-path: "dist/*" }
+      - name: Provenance as a release asset
+        # The same Sigstore bundle as the attestation, one JSON line, so a
+        # verifier (and OpenSSF Scorecard) finds it next to the binaries.
+        env: { BUNDLE: "${{ steps.attest.outputs.bundle-path }}" }
+        run: python3 -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1])), separators=(",", ":")))' "$BUNDLE" > "dist/tellproof-$GITHUB_REF_NAME.intoto.jsonl"
       - name: Draft release
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Tellproof $GITHUB_REF_NAME" --notes-file dist/RELEASE-NOTES.md dist/*

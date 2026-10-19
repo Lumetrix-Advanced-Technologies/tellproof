@@ -173,6 +173,8 @@ gh attestation verify oci://ghcr.io/lumetrix-advanced-technologies/tellproof-age
 npm audit signatures            # in a project that installed tellproof-agent or tellproof
 ```
 
+Each release also carries its provenance as `tellproof-<version>.intoto.jsonl`, the same Sigstore bundle, for verifiers that read release assets.
+
 ### The verifier
 
 `tellproof-verify-<os>-<arch>` from [Releases](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases), or `go install github.com/lumetrix-advanced-technologies/tellproof/cmd/verify@latest`.
@@ -609,14 +611,14 @@ Is tampering with the log detected?
 The repository is also a GitHub Action. Validate the policy on every pull request that changes it:
 
 ```yaml
-- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.0
+- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.1
   with: { command: validate, policy: tellproof.policy.json }
 ```
 
 Or gate a release on the evidence, with a copy of the agent's data directory (from a scheduled job, an artifact or a volume snapshot):
 
 ```yaml
-- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.0
+- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.1
   with: { command: check, policy: tellproof.policy.json, data-dir: evidence/, strict: "true" }
 ```
 
@@ -923,7 +925,7 @@ tellproof-agent ci keygen --out <file>
 tellproof-agent connect [--config <agent.json>] <token>
 tellproof-agent enrol --config <agent.json> [--token <token>]
 tellproof-agent [run] --config <agent.json> [--dry-run] [--replay <export.jsonl>]
-tellproof-agent version
+tellproof-agent --version                          # also -v or version; in a terminal, with the banner
 ```
 
 | Flag | Commands | Meaning |
@@ -974,6 +976,8 @@ Start with `tellproof-agent doctor`. It checks the configuration, the data direc
 
 | Symptom | What to check |
 | --- | --- |
+| `tellproof: command not found` | Installed with npm: run it as `npx tellproof` (npm keeps commands in `node_modules/.bin`, not on your PATH). Installed with pip: activate the virtual environment you installed into, or add pip's script directory (`~/.local/bin` with `--user`) to PATH. `tellproof --version` then shows the agent's and the SDK's versions. |
+| `npx tellproof` says `tellproof: not found`, in a folder whose path has a `:` | `:` separates PATH entries, so npm cannot add that folder's `node_modules/.bin` to PATH. Run `./node_modules/.bin/tellproof`, or move the project to a path without `:`. |
 | `tellproof: the Tellproof agent is not installed` | Install it with the SDK: `pip install "tellproof[agent]"`, or `npm install tellproof` without `--omit=optional`. |
 | `start` says the agent stopped while starting | It prints the reason from the log: usually a port in use (`TELLPROOF_OTLP_LISTEN`, `TELLPROOF_DASHBOARD_LISTEN`) or a data directory enrolled for connected mode. |
 | "an agent already runs on …" | One agent per data directory: `tellproof-agent status` shows it, `tellproof-agent stop` stops it. |

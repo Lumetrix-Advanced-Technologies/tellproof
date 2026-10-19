@@ -1,5 +1,6 @@
-# Weekly updates for the pinned workflow actions and the agent image's base
-# images. This repository is exported from the maintainers' working repository
+# Weekly updates for the pinned workflow actions, the agent image's base
+# images (pinned by digest) and the hash-pinned Python tools the workflows
+# install (.github/requirements). This repository is exported from the maintainers' working repository
 # (see CONTRIBUTING.md), so a maintainer applies each update there and the next
 # export closes the pull request here.
 version: 2
@@ -12,3 +13,8 @@ updates:
   - package-ecosystem: docker
     directory: /cmd/agent
     schedule: { interval: weekly }
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule: { interval: weekly }
+    groups:
+      python-tools: { patterns: ["*"] }

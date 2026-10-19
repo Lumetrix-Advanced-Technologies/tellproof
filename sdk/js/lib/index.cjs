@@ -19,7 +19,7 @@ const canaries = require('./canary.cjs');
 const otlp = require('./otlp.cjs');
 const { Exporter, httpTransport } = require('./export.cjs');
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:4318';
 let exitHook = false;
 let instrumented = [];

@@ -12,7 +12,7 @@
 //	tellproof-agent connect <token>               # enrol once, then run (the one-command install)
 //	tellproof-agent enrol --config agent.json      # token in TELLPROOF_ENROL_TOKEN
 //	tellproof-agent [run] --config agent.json [--dry-run] [--replay export.jsonl]
-//	tellproof-agent version
+//	tellproof-agent --version                     # the version (and the SDK's, run as tellproof)
 //
 // --dry-run prints every batch it would send, with its payload decoded, and
 // sends, queues and stores nothing. --replay feeds an OTLP JSON export through
@@ -59,7 +59,7 @@ const usage = `usage:
   tellproof-agent connect [--config <agent.json>] <token>
   tellproof-agent enrol --config <agent.json> [--token <token>]
   tellproof-agent [run] --config <agent.json> [--dry-run] [--replay <export.jsonl>]
-  tellproof-agent version
+  tellproof-agent --version   (or -v, or version: the agent's version, and the SDK's when run as tellproof)
 
 run --local (or just local) runs with no server and no token: batches are
 signed with the agent's own key and kept in <data-dir>/local, a dashboard is
@@ -89,6 +89,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 	if isLifecycle(args) {
 		return lifecycle(ctx, args, getenv, stdout, stderr)
+	}
+	if len(args) == 1 && (args[0] == "version" || args[0] == "--version" || args[0] == "-v" || args[0] == "-V") {
+		printVersion(stdout, getenv)
+		return 0
 	}
 	if len(args) == 0 && welcome(stdout, getenv) {
 		return 0 // in a terminal, no arguments shows the welcome; elsewhere it still means run

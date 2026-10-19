@@ -68,7 +68,7 @@ Adding Tellproof to a project adds code to the app's process (the SDK), a local 
 | --- | --- | --- |
 | A tampered release | Binaries, checksums, wheels, npm tarballs and the image carry signed build provenance (SLSA via GitHub artifact attestations); `gh attestation verify` checks them. | `release.yml`, `packages.yml` |
 | A hijacked publish | PyPI: trusted publishing only, behind a required reviewer. npm: CI can only stage; each version is approved by a maintainer with two-factor authentication. No registry token is stored. | D-062 |
-| Workflow compromise | Every action pinned to a commit SHA, `persist-credentials: false`, permissions per job, Dependabot, OpenSSF Scorecard. | the pin test (D-063) |
+| Workflow compromise | Every action pinned to a commit SHA; the Python tools the workflows install pinned by hash (`.github/requirements`); the image's base images pinned by digest; npm run at an exact version; `persist-credentials: false`, permissions per job, Dependabot, OpenSSF Scorecard. | the pin test (D-063), Scorecard's Pinned-Dependencies |
 | An unexpected major version | The SDK's optional agent dependency is bounded below 1.0 on PyPI and npm. | `test_cli.py`, `cli.test.mjs` |
 
 ## Not yet done

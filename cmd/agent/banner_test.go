@@ -92,3 +92,45 @@ func TestBannerOnlyInATerminal(t *testing.T) {
 		t.Errorf("no arguments without a terminal showed the welcome: %d %q", code, out.String())
 	}
 }
+
+// --version: the agent's version first (scripts and the release smoke tests
+// read it), then the SDK's when an SDK launcher ran it; a TELLPROOF_SDK that
+// is not the launchers' form is never printed (it could carry escapes).
+func TestVersionFlag(t *testing.T) {
+	for _, flag := range []string{"--version", "-v", "-V", "version"} {
+		var out bytes.Buffer
+		env := map[string]string{"TELLPROOF_SDK": "tellproof 0.3.1 (Node.js SDK)"}
+		if code := run(context.Background(), []string{flag}, func(k string) string { return env[k] }, &out, &out); code != 0 {
+			t.Fatalf("%s: exit %d", flag, code)
+		}
+		if got, want := out.String(), "tellproof-agent "+version+"\ntellproof 0.3.1 (Node.js SDK)\n"; got != want {
+			t.Errorf("%s: %q, want %q", flag, got, want)
+		}
+	}
+	for _, bad := range []string{"", "tellproof 0.3.1", "tellproof 0.3.1 (Ruby SDK)", "tellproof \x1b[31m0.3.1 (Python SDK)", "evil (Python SDK)"} {
+		if v := sdkVersion(func(string) string { return bad }); v != "" {
+			t.Errorf("TELLPROOF_SDK %q printed as %q", bad, v)
+		}
+	}
+	var out bytes.Buffer
+	run(context.Background(), []string{"--version"}, func(string) string { return "" }, &out, &out)
+	if out.String() != "tellproof-agent "+version+"\n" {
+		t.Errorf("without an SDK: %q", out.String())
+	}
+}
+
+func TestVersionInATerminal(t *testing.T) {
+	for _, width := range []int{40, 60, 80, 120} {
+		v := versionText(palette{mode: 2}, width, "tellproof 0.3.1 (Python SDK)")
+		for _, want := range []string{"tellproof-agent " + version, "tellproof 0.3.1 (Python SDK)", "Platform"} {
+			if !strings.Contains(v, want) {
+				t.Errorf("width %d: no %q in\n%s", width, want, v)
+			}
+		}
+		for _, line := range strings.Split(v, "\n") {
+			if visible(line) > max(width, 44) {
+				t.Errorf("width %d: line wider than the terminal: %q", width, line)
+			}
+		}
+	}
+}

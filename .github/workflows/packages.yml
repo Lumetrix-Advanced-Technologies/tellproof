@@ -17,6 +17,8 @@ on:
         description: Release tag to package, for example v0.2.0
         required: true
 permissions: {}
+# npm stage needs npm 11.15.0+; an exact version, run with npx (update it by hand).
+env: { NPM_VERSION: "11.21.1" }
 concurrency: { group: "packages-${{ github.event.release.tag_name || inputs.tag }}", cancel-in-progress: false }
 jobs:
   build:
@@ -56,9 +58,9 @@ jobs:
           v="${TAG#v}"
           python3 -m venv /tmp/py && /tmp/py/bin/pip install --quiet pkg/pypi/tellproof_agent-*manylinux*x86_64*.whl
           /tmp/py/bin/tellproof-agent version | grep -qx "tellproof-agent v$v"
-          mkdir -p /tmp/npm && cd /tmp/npm && npm init -y > /dev/null
-          npm install --no-audit --no-fund "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-linux-x64-*.tgz "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-[0-9]*.tgz > /dev/null
-          npx --no-install tellproof-agent version | grep -qx "tellproof-agent v$v"
+          mkdir -p /tmp/npm && cd /tmp/npm
+          # The launcher package with this platform's binary package, both from these tarballs.
+          npx --yes --package "$(ls "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-linux-x64-*.tgz)" --package "$(ls "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-[0-9]*.tgz)" -- tellproof-agent version | grep -qx "tellproof-agent v$v"
           echo "pip and npm packages install and run: tellproof-agent v$v"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -99,11 +101,12 @@ jobs:
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
-      - run: npm install -g "npm@>=11.15.0 <13" && npm --version   # npm stage needs npm 11.15.0+
+      - run: npx --yes "npm@$NPM_VERSION" --version
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: packages, path: pkg }
       - name: Stage for approval on npmjs.com
         run: |
+          npm() { npx --yes "npm@$NPM_VERSION" "$@"; }
           stage() {
             spec=$(tar xzOf "$1" package/package.json | node -p 'const p = JSON.parse(require("fs").readFileSync(0)); p.name + "@" + p.version')
             if npm view "$spec" version > /dev/null 2>&1; then echo "$spec is already on npm"; return; fi

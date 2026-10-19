@@ -29,8 +29,9 @@ function bundledAgent() {
 
 function run(bin) {
   // argv0 "tellproof" and TELLPROOF_COMMAND: the agent then suggests
-  // `npx tellproof ...` commands, which is how they run from a project.
-  const env = { ...process.env, TELLPROOF_COMMAND: 'npx tellproof' };
+  // `npx tellproof ...` commands, which is how they run from a project;
+  // TELLPROOF_SDK: `npx tellproof --version` shows this SDK's version too.
+  const env = { ...process.env, TELLPROOF_COMMAND: 'npx tellproof', TELLPROOF_SDK: `tellproof ${require('../package.json').version} (Node.js SDK)` };
   const child = spawn(bin, process.argv.slice(2), { stdio: 'inherit', argv0: 'tellproof', env });
   const forward = (sig) => () => child.kill(sig);
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, forward(sig));
