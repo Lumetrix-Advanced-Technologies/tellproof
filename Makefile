@@ -6,7 +6,7 @@ GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 VERSION ?= dev
 
-.PHONY: check fmt-check vet staticcheck vuln test vectors sdk-test package-test release-binaries release-sums packages agent-image agent-dry
+.PHONY: check fmt-check vet staticcheck vuln test vectors sdk-test package-test release-binaries release-sums packages agent-image agent-dry leak-test
 
 check: fmt-check vet staticcheck vuln test vectors sdk-test package-test
 
@@ -38,7 +38,15 @@ vectors:
 
 sdk-test:
 	python3 -m unittest discover -s sdk/python/tests
-	node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs sdk/js/test/real-libs.test.mjs
+	node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs sdk/js/test/real-libs.test.mjs sdk/js/test/cli.test.mjs sdk/js/test/simple.test.mjs
+
+# The content-leak regression suite alone (D-065): spec/leak-corpus.json through the
+# agent (dry run, receiver, signed log, dashboard, reports), Langfuse, the identifier
+# rules (Go and Python) and both SDKs. make check runs it too.
+leak-test:
+	go test -count=1 -run 'Leak|Identifier|ContentInReadAttributes' ./cmd/agent ./internal/otlp ./internal/langfuse
+	python3 -m unittest discover -s sdk/python/tests -p 'test_leak.py'
+	node --test --test-name-pattern 'leak corpus' sdk/js/test/instrument.test.mjs
 
 # The pip and npm packages of the agent, built from release binaries (D-054).
 package-test:

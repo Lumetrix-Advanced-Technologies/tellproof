@@ -14,22 +14,21 @@
 
 <p align="center">
   <a href="https://github.com/Lumetrix-Advanced-Technologies/tellproof/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Lumetrix-Advanced-Technologies/tellproof/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://pypi.org/project/tellproof-agent/"><img alt="PyPI: tellproof-agent" src="https://img.shields.io/pypi/v/tellproof-agent?label=pip%20install%20tellproof-agent&color=1f56c9"></a>
-  <a href="https://www.npmjs.com/package/tellproof-agent"><img alt="npm: tellproof-agent" src="https://img.shields.io/npm/v/tellproof-agent?label=npx%20tellproof-agent&color=1f56c9"></a>
-  <a href="https://pypi.org/project/tellproof/"><img alt="PyPI: tellproof" src="https://img.shields.io/pypi/v/tellproof?label=tellproof%20(python)&color=1e6b43"></a>
-  <a href="https://www.npmjs.com/package/tellproof"><img alt="npm: tellproof" src="https://img.shields.io/npm/v/tellproof?label=tellproof%20(node)&color=1e6b43"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/Lumetrix-Advanced-Technologies/tellproof"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/Lumetrix-Advanced-Technologies/tellproof/badge"></a>
+  <a href="https://pypi.org/project/tellproof/"><img alt="PyPI: tellproof" src="https://img.shields.io/pypi/v/tellproof?label=pip%20install%20tellproof%5Bagent%5D&color=1f56c9"></a>
+  <a href="https://www.npmjs.com/package/tellproof"><img alt="npm: tellproof" src="https://img.shields.io/npm/v/tellproof?label=npm%20install%20tellproof&color=1f56c9"></a>
+  <a href="https://pypi.org/project/tellproof-agent/"><img alt="PyPI: tellproof-agent" src="https://img.shields.io/pypi/v/tellproof-agent?label=tellproof-agent&color=1e6b43"></a>
   <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-565d69"></a>
 </p>
 
 <p align="center">
   <a href="https://lumetrix-advanced-technologies.github.io/tellproof/"><b>Website</b></a> ·
-  <a href="#quick-start-five-minutes-no-account"><b>Quick start</b></a> ·
+  <a href="#quick-start-two-minutes-no-account"><b>Quick start</b></a> ·
   <a href="#instrument-your-app">Instrument</a> ·
-  <a href="#the-dashboard">Dashboard</a> ·
+  <a href="#run-the-agent">Run the agent</a> ·
   <a href="#governance-as-code-policy-check-and-ai-bom">Governance as code</a> ·
-  <a href="#verify-a-pack">Verify a pack</a> ·
   <a href="#cli-reference">CLI</a> ·
-  <a href="#security-model">Security</a>
+  <a href="HOW-IT-WORKS.md"><b>How it works</b></a>
 </p>
 
 <p align="center">
@@ -40,164 +39,78 @@
 </p>
 
 > [!IMPORTANT]
-> **No content leaves your machine.** The SDKs never read prompts or completions, the agent drops message attributes the moment they arrive, and what it keeps is counts, short names and salted commitments. In local mode nothing is sent anywhere at all; `tellproof-agent run --dry-run` shows exactly what connected mode would send.
+> **No content leaves your machine.** The SDKs never read prompts or completions, the agent drops message attributes the moment they arrive, and what it keeps is counts, short names and salted commitments. In local mode nothing is sent anywhere at all; `tellproof-agent run --dry-run` shows exactly what connected mode would send. [How that works](HOW-IT-WORKS.md#what-leaves-your-machine).
 
-> [!NOTE]
-> **Tellproof was called Plumbline until v0.2.** A tell is what gives something away; Tellproof evidence tells on itself: an edited or missing hour, a guardrail that stopped catching, a check that could never fail. Everything from v0.2 keeps working: `PLUMBLINE_*` variables, `plumbline.*` span attributes, `plumbline.policy.json` and a `.plumbline-agent` data directory are all still read, and batches, packs and keys are unchanged. See [Upgrading from Plumbline](#upgrading-from-plumbline).
+This page is the setup and usage guide. For the architecture, the evidence model, what is signed and how it is verified, and the security model, read **[How Tellproof works](HOW-IT-WORKS.md)**.
 
-## Why Tellproof
+## What you get
 
-<table>
-  <tr>
-    <td width="33%" valign="top">
-      <h4>🔌 One line, any stack</h4>
-      <p><code>tellproof.init()</code> instruments the OpenAI, Anthropic and Bedrock clients you already use, in Python or Node.js, with no dependencies. Model vendors wrap their serving layer with one helper. OpenTelemetry works too.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h4>🔏 Tamper-evident by design</h4>
-      <p>Every hour is a signed, chained batch with a Merkle commitment to its traces. Edit, drop or reorder one and verification fails, in the CLI, the dashboard and the browser verifier alike.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h4>📊 A dashboard, locally</h4>
-      <p>Calls and tokens per model and region, guardrail coverage, personal-data redaction, agent tool use, changes and anomalies, served by the agent on loopback. No account, no SaaS.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="33%" valign="top">
-      <h4>📐 Governance as code</h4>
-      <p>Declare models, regions and registers in <code>tellproof.policy.json</code>. <code>tellproof-agent check</code> evaluates the eleven evidence objectives and fails CI when one fails, with a GitHub Action, and <code>aibom</code> writes a CycloneDX AI bill of materials from the evidence.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h4>🧪 Evidence that can fail</h4>
-      <p>A check that cannot fail proves nothing. Guardrail canaries send known-bad probes through your own guardrail and record whether it caught them; <code>check --self-test</code> proves every objective fails on bad evidence and every tampering is caught.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h4>✅ Verifiable by anyone</h4>
-      <p>Packs are DSSE-signed in-toto statements. Three independent verifiers (Go, browser, Python) agree on every published test vector, and the evaluator itself is open source.</p>
-    </td>
-  </tr>
-</table>
-
-### Local or hosted
-
-| | Local mode (open source) | Hosted service (early access) |
-| --- | :---: | :---: |
-| One-line SDKs, agent, content dropped at parse time | ✓ | ✓ |
-| Signed, chained hourly batches with trace commitments | ✓ | ✓ |
-| Dashboard and terminal report | ✓ | ✓ |
-| Policy file, `check` against the eleven objectives, CI gating, AI-BOM | ✓ | ✓ |
-| Guardrail canaries and `check --self-test` | ✓ | ✓ |
-| CI evidence per commit for coding agents (`ci`), with must-fail canaries | ✓ | ✓ |
-| Evidence signed by an **independent issuer** (KMS-held key) | | ✓ |
-| Monthly packs, chained, in a **public daily checkpoint** | | ✓ |
-| Share links for reviewers, with view counts | | ✓ |
-| Registers in an app, Vanta sync | | ✓ |
-| Data leaves your environment | **never** | signed counts only |
+- **One line in your app.** `tellproof.init()` records every OpenAI, Anthropic and Bedrock call (Python or Node.js, no dependencies): models, regions, tokens, guardrail decisions, redaction, tool use. Never the content.
+- **A signed, tamper-evident log and a local dashboard.** One signed, chained batch per hour, kept on your machine; a dashboard on `http://127.0.0.1:4319`. No account.
+- **Governance as code.** Declare models and regions in `tellproof.policy.json`; `check` evaluates the eleven evidence objectives locally and in CI, `check --self-test` proves each could fail, `aibom` writes a CycloneDX AI-BOM.
+- **Evidence for coding agents.** Signed per-commit proof that CI gates ran, tested something, and could have failed.
+- **Packs reviewers verify themselves** (hosted, early access): the same evaluation, signed by an independent issuer, checked in the reviewer's browser.
 
 ## Contents
 
-1. [Who it is for: use cases](#who-it-is-for-use-cases)
-2. [How it works](#how-it-works)
-3. [Quick start: five minutes, no account](#quick-start-five-minutes-no-account)
-4. [Install](#install)
-5. [Instrument your app](#instrument-your-app)
-6. [Run the agent](#run-the-agent)
-7. [The dashboard](#the-dashboard)
-8. [Reports in the terminal](#reports-in-the-terminal)
-9. [Governance as code: policy, check and AI-BOM](#governance-as-code-policy-check-and-ai-bom)
-10. [Evidence for coding agents: CI gates per commit](#evidence-for-coding-agents-ci-gates-per-commit)
-11. [Configuration reference](#configuration-reference)
-12. [More evidence sources: Langfuse and provider usage](#more-evidence-sources-langfuse-and-provider-usage)
-13. [What leaves your machine](#what-leaves-your-machine)
-14. [Deploying the agent](#deploying-the-agent)
-15. [Signed evidence packs: the hosted service (early access)](#signed-evidence-packs-the-hosted-service-early-access)
-16. [Verify a pack](#verify-a-pack)
-17. [Security model](#security-model)
-18. [CLI reference](#cli-reference)
-19. [Troubleshooting](#troubleshooting)
-20. [Develop and contribute](#develop-and-contribute)
-21. [Security reports and licence](#security-reports-and-licence)
+1. [Quick start: two minutes, no account](#quick-start-two-minutes-no-account)
+2. [Install](#install)
+3. [Instrument your app](#instrument-your-app)
+4. [Run the agent](#run-the-agent)
+5. [The dashboard](#the-dashboard)
+6. [Reports in the terminal](#reports-in-the-terminal)
+7. [Governance as code: policy, check and AI-BOM](#governance-as-code-policy-check-and-ai-bom)
+8. [Evidence for coding agents: CI gates per commit](#evidence-for-coding-agents-ci-gates-per-commit)
+9. [Configuration reference](#configuration-reference)
+10. [More evidence sources: Langfuse and provider usage](#more-evidence-sources-langfuse-and-provider-usage)
+11. [Deploying the agent](#deploying-the-agent)
+12. [Signed evidence packs (early access)](#signed-evidence-packs-early-access)
+13. [Verify a pack](#verify-a-pack)
+14. [CLI reference](#cli-reference)
+15. [Troubleshooting](#troubleshooting)
+16. [Develop and contribute](#develop-and-contribute)
+17. [Security reports and licence](#security-reports-and-licence)
 
 ---
 
-## Who it is for: use cases
+## Quick start: two minutes, no account
 
-### You build an AI-powered app or agent
-
-You call OpenAI, Anthropic, Amazon Bedrock or any OpenAI-compatible API, and your customers' security, risk and procurement teams keep asking the same questions.
-
-| You need to show | What Tellproof records |
-| --- | --- |
-| **Which models and providers you use, and where they run** (vendor-risk questionnaires, data-residency clauses) | Calls and tokens per provider, model and region, every hour. Packs check them against the models and regions you declared. |
-| **That guardrails run on every call** | For each model call, whether a guardrail decided on it (allow, block or flag), and how many were blocked. |
-| **That personal data is removed before it reaches a model** | How many spans carried personal data, and how many of those were redacted first. |
-| **That no prompt or completion text is kept** | Spans that arrive carrying message content are counted and the content dropped; the count is the evidence. |
-| **What changed, and when** | Every model change and prompt-version change, with its time: a material-change log for your AI system. |
-| **That evaluations are current** | Evaluation runs (suite, model, prompt version, pass rate, time), set against the models and prompt versions that were actually live. |
-| **That an agent's actions are under control** | Agent runs, tool calls and tool errors, high-impact tool calls and how many were approved, hand-offs to a person. |
-| **That nothing was left out** | A Merkle commitment to every trace in every hour, and token totals that can be reconciled with the provider's own billed usage. |
-| **That the system is what you said it is** | A policy file in your repository declares the models and regions it may use and keeps the change, incident and evaluation registers; `tellproof-agent check` evaluates the evidence against the eleven evidence objectives and fails CI when one fails. |
-| **An inventory of the AI you actually run** | `tellproof-agent aibom` writes a CycloneDX 1.6 AI bill of materials of every model declared or seen, with regions, volumes and first and last use. |
-| **Operational awareness, privately** | A local dashboard of all of the above, hour by hour, without sending anything to a SaaS. |
-
-### You are an AI model vendor or inference provider
-
-You serve your own models (or host others') behind an API. Wrap each inference request in your serving layer with one helper, and you can show your customers which models and regions served their traffic, guardrail and redaction coverage on your side, and model changes over time. They can pass that evidence on to their own reviewers. See [For model vendors and inference providers](#for-model-vendors-and-inference-providers).
-
-### You ship code written with coding agents
-
-Claude Code, Copilot, Cursor and their peers now write a large share of commits, and reviewers want to know the same thing about all of it: did the checks actually run, and could they have caught a mistake? `tellproof-agent ci` records each CI gate's outcome per commit (exit status, duration, test counts; never logs, code or command lines), runs **must-fail canaries** that break the code on purpose and require the gate to fail, counts the commits that name a coding agent, and writes a signed in-toto statement per commit that anyone can check with `tellproof-agent ci verify` or `tellproof-verify ci`. See [Evidence for coding agents](#evidence-for-coding-agents-ci-gates-per-commit).
-
-### You review AI vendors: bank, insurer, auditor, risk or procurement team
-
-A vendor sends you a share link or a pack file. You check it yourself, in your browser or with an offline command, against the issuer's published keys: no account, no trust in the vendor, no trust in Tellproof. Three independent verifiers (Go, browser, Python) must agree on every [published test vector](spec/vectors/README.md), and you can write a fourth. See [Verify a pack](#verify-a-pack).
-
-### You run security, platform or GRC for an AI product
-
-- Audit exactly what the agent would send before you allow it: `tellproof-agent run --dry-run` prints every batch, decoded, and sends nothing.
-- Run it with no network egress at all (local mode).
-- Keep governance in code review: `tellproof.policy.json` sits next to the code, `tellproof-agent policy validate` checks it in CI, and `tellproof-agent check` (or the [GitHub Action](#in-ci)) gates releases on the eleven evidence objectives.
-- Map results to framework references by ID (EU AI Act, ISO/IEC 42001, AIUC-1, CSA AICM and more; each objective lists the references it supports), hand auditors an AI-BOM, and, with the hosted service, keep your compliance platform (Vanta) up to date automatically.
-
----
-
-## How it works
-
-```mermaid
-flowchart LR
-  subgraph yours["Your environment"]
-    app["Your app or model server<br/>+ tellproof.init()"] -- "OTLP spans<br/>(no content)" --> agent["tellproof-agent"]
-    otel["Any OpenTelemetry<br/>exporter"] -. "OTLP JSON" .-> agent
-    lf["Langfuse,<br/>provider usage APIs"] -. "read-only pulls" .-> agent
-    agent --> log[("Signed local log<br/>+ dashboard :4319")]
-  end
-  agent -- "signed hourly batches<br/>(connected mode only)" --> svc["Tellproof service<br/>evaluates · signs packs"]
-  svc -- "share link" --> rev["Reviewer's browser or<br/>tellproof-verify (offline)"]
-  svc -- "daily checkpoint" --> pub[("Public checkpoint log")]
-```
-
-| Part | What it does |
-| --- | --- |
-| **SDKs** (`tellproof` for Python and Node.js) | `tellproof.init()` instruments the OpenAI, Anthropic and Bedrock client libraries you already use: one span per model call with provider, model, region, token counts, operation, timing and error status. **They never read message content.** Helpers add the facts no client library knows (prompt version, guardrail decision, redaction, tool approval). |
-| **Agent** (`tellproof-agent`) | Runs next to your app. Receives spans on `127.0.0.1:4318`, drops every message attribute at parse time, aggregates per hour, commits every trace into a salted Merkle tree, and signs each hourly batch with its own Ed25519 key. |
-| **Local mode** | The agent keeps the signed, chained batches in its data directory and serves a dashboard. Nothing is sent anywhere. |
-| **Connected mode** | The agent sends the same signed batches to the Tellproof service, which evaluates eleven evidence objectives and issues signed, chained monthly packs. |
-| **Verifiers** | `tellproof-verify` (offline command), the verify page (in the browser) and `concierge/verify.py` (an independent Python verifier). |
-
----
-
-## Quick start: five minutes, no account
-
-**1. Start the agent in local mode.** Pick whichever you already have:
+**1. Install the SDK and the agent, in one step.**
 
 ```bash
-pip install tellproof-agent && tellproof-agent run --local     # Python 3.8+
-npx tellproof-agent run --local                                # Node.js 18+
-docker run -d --name tellproof-agent -p 127.0.0.1:4318:4318 -p 127.0.0.1:4319:4319 \
-  -v tellproof-agent:/data ghcr.io/lumetrix-advanced-technologies/tellproof-agent:latest run --local
+pip install "tellproof[agent]"     # Python 3.10+
+npm install tellproof              # Node.js 18+ (the agent comes as an optional dependency)
 ```
 
-In a terminal it greets you, then shows where it listens for spans, the dashboard address, where the signed evidence is kept, and its agent ID. Run `tellproof-agent` on its own for the welcome and first steps:
+**2. Set up and start.** In your app's directory:
+
+```bash
+tellproof init                     # from npm: npx tellproof init
+```
+
+`init` recognises a Python or Node.js project, shows the one line to add and the file it goes in, writes `tellproof.policy.json`, offers to add the agent's data directory to `.gitignore`, and starts the agent in the background. It changes no source file. The line it shows is:
+
+```python
+import tellproof
+tellproof.init()                   # once, at start-up, before your first model call
+```
+
+```js
+import * as tellproof from 'tellproof';
+tellproof.init();
+```
+
+**3. Run your app, make a model call, and open http://127.0.0.1:4319.** The first batch appears about a minute after the first call, and every hour after that. Nothing showing? `tellproof doctor` checks the setup and prints a fix for each problem.
+
+**4. When you are done:** `tellproof stop`. `tellproof start` brings it back; `tellproof status` says whether it runs and where.
+
+> [!TIP]
+> Only looking? `tellproof demo` serves the dashboard on a synthetic, signed week (nothing from your system), with a policy, so you can try `report`, `check` and `check --self-test` on it. Next steps: declare what the system may use and check the evidence against the eleven objectives with `tellproof policy init`, then `tellproof check` ([governance as code](#governance-as-code-policy-check-and-ai-bom)).
+
+> [!NOTE]
+> **One command, three spellings.** `tellproof` (installed with the SDK), `npx tellproof` (inside an npm project) and `tellproof-agent` (the agent on its own: a release binary, the container, `pip install tellproof-agent`) run the same agent with the same commands. The rest of this guide writes `tellproof-agent`, which works in every install.
+
+In a terminal the agent greets you; run it with no arguments for the welcome and first steps:
 
 <p align="center">
   <picture>
@@ -208,60 +121,46 @@ In a terminal it greets you, then shows where it listens for spans, the dashboar
 
 The banner appears only in an interactive terminal (from v0.4.0). Pipes, files, CI and `TELLPROOF_NO_BANNER=1` get the plain lines and the JSON log, unchanged; `NO_COLOR` keeps the banner without colour.
 
-**2. Add the SDK to your app.**
-
-```bash
-pip install tellproof        # Python 3.10+
-npm install tellproof        # Node.js 18+
-```
-
-```python
-import tellproof
-tellproof.init()                 # once, at start-up, before your first model call
-```
-
-```js
-import * as tellproof from 'tellproof';
-tellproof.init();
-```
-
-**3. Make a model call, then open http://127.0.0.1:4319.** The first batch appears about a minute after the first call, and every hour after that.
-
-> [!TIP]
-> Next: declare what the system may use and check the evidence against the eleven objectives, in two commands: `tellproof-agent policy init`, then `tellproof-agent check`. See [Governance as code](#governance-as-code-policy-check-and-ai-bom). To share signed packs with reviewers, see [the hosted service](#signed-evidence-packs-the-hosted-service-early-access).
-
 ---
 
 ## Install
 
-### The agent
+### The SDK and the agent together
+
+| You use | Install | You get |
+| --- | --- | --- |
+| **Python** | `pip install "tellproof[agent]"` | The SDK (`import tellproof`), the agent, and the `tellproof` and `tellproof-agent` commands. |
+| **Node.js** | `npm install tellproof` | The SDK (`import`/`require('tellproof')`), and the agent as an optional dependency: `npx tellproof`. pnpm, Yarn and Bun work too. |
+
+In production the agent usually runs beside the app (a sidecar, a service or a container: see [Deploying the agent](#deploying-the-agent)), so the app needs only the SDK: `pip install tellproof`, or `npm ci --omit=optional` to leave the agent out of the image. The SDK imports nothing outside the standard library (Node built-ins), and never the agent.
+
+### The agent on its own
 
 | Method | Command | Notes |
 | --- | --- | --- |
-| **pip** | `pip install tellproof-agent` | Platform wheels for Linux (glibc and musl) x86_64 and aarch64, macOS 12+ x86_64 and arm64, Windows x64 and arm64. Each holds the release's static binary; nothing is compiled or downloaded at install time. `python -m tellproof_agent` works too. |
+| **pip** | `pip install tellproof-agent` | Python 3.8+. Platform wheels for Linux (glibc and musl) x86_64 and aarch64, macOS 12+ x86_64 and arm64, Windows x64 and arm64. Each holds the release's static binary; nothing is compiled or downloaded at install time. `python -m tellproof_agent` works too. |
 | **npm** | `npm install -g tellproof-agent`, or `npx tellproof-agent` | The right platform binary comes as an optional dependency; no install scripts. Don't install with `--omit=optional`. |
-| **Docker** | `ghcr.io/lumetrix-advanced-technologies/tellproof-agent:<version>` | A static binary on distroless, non-root, for linux/amd64 and linux/arm64. Data in `/data`. |
+| **Docker** | `ghcr.io/lumetrix-advanced-technologies/tellproof-agent:<version>` | A static binary on distroless, non-root, for linux/amd64 and linux/arm64. Data in `/data`. See below. |
 | **Binary** | [Releases](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases) | `tellproof-agent-<os>-<arch>`; use `tellproof-agent-bedrock-*` for Amazon Bedrock usage from CloudWatch. |
 | **Source** | `go install github.com/lumetrix-advanced-technologies/tellproof/cmd/agent@latest` | Go 1.26+. Add `-tags bedrock` for the Bedrock usage poller. |
 
-### With npm
-
-The agent and the SDK are both on npm, for Node.js 18 and later. npm, pnpm, Yarn and Bun all work.
+With Docker, in local mode, publishing the receiver and the dashboard on the host's loopback only:
 
 ```bash
-npx tellproof-agent run --local            # try it without installing anything
-npm install -g tellproof-agent             # or put it on your PATH ...
-tellproof-agent                            # ... the welcome banner and first steps
-tellproof-agent run --local
-
-npm install --save-dev tellproof-agent     # or pin it per project: npx tellproof-agent run --local
-npm install tellproof                      # the SDK, in your app
+docker run -d --name tellproof-agent -p 127.0.0.1:4318:4318 -p 127.0.0.1:4319:4319 \
+  -v tellproof-agent:/data ghcr.io/lumetrix-advanced-technologies/tellproof-agent:latest run --local
+docker stop tellproof-agent                        # and docker start tellproof-agent
 ```
 
+<details>
+<summary><b>More about the npm packages</b></summary>
+
 - **How it installs:** `tellproof-agent` is a small launcher; the binary for your platform comes in one of six packages (`tellproof-agent-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64`, `-win32-x64`, `-win32-arm64`) that npm picks through `optionalDependencies`. Nothing runs at install time: no install scripts, no downloads.
-- **"no binary for …":** your platform is not one of those six, or optional dependencies were left out (`--omit=optional`, `--no-optional`, or `optional=false` in `.npmrc`). Reinstall without that, or use a [release binary](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases).
-- **Upgrade and remove:** `npm install -g tellproof-agent@latest`; `npm uninstall -g tellproof-agent`. The data directory (`./.tellproof-agent`) is yours and stays where it is.
-- **The SDK** ships CommonJS and ES modules with TypeScript types, and no dependencies: `import * as tellproof from 'tellproof'` or `const tellproof = require('tellproof')`.
+- **"no binary for …" or "the Tellproof agent is not installed":** your platform is not one of those six, or optional dependencies were left out (`--omit=optional`, `--no-optional`, or `optional=false` in `.npmrc`). Reinstall without that, or use a [release binary](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases).
+- **Upgrade and remove:** `npm install tellproof@latest` (or `npm install -g tellproof-agent@latest`); `npm uninstall`. The data directory (`./.tellproof-agent`) is yours and stays where it is.
+- **The SDK** ships CommonJS and ES modules with TypeScript types: `import * as tellproof from 'tellproof'` or `const tellproof = require('tellproof')`.
+
+</details>
 
 ### Check a download
 
@@ -274,13 +173,6 @@ gh attestation verify oci://ghcr.io/lumetrix-advanced-technologies/tellproof-age
 npm audit signatures            # in a project that installed tellproof-agent or tellproof
 ```
 
-### The SDKs
-
-```bash
-pip install tellproof        # Python 3.10+, standard library only
-npm install tellproof        # Node.js 18+, built-ins only; ESM and CommonJS; TypeScript types included
-```
-
 ### The verifier
 
 `tellproof-verify-<os>-<arch>` from [Releases](https://github.com/Lumetrix-Advanced-Technologies/tellproof/releases), or `go install github.com/lumetrix-advanced-technologies/tellproof/cmd/verify@latest`.
@@ -289,46 +181,92 @@ npm install tellproof        # Node.js 18+, built-ins only; ESM and CommonJS; Ty
 
 ## Instrument your app
 
-### Python
+### One line
 
 ```python
 import tellproof
 tellproof.init()
 ```
 
-`init()` takes optional arguments. It is safe to call more than once, and returns whether the SDK is on.
-
-| Argument | Default | Meaning |
-| --- | --- | --- |
-| `agent_url` | `TELLPROOF_AGENT_URL`, else `http://127.0.0.1:4318` | Where the agent listens. |
-| `service` | `TELLPROOF_SERVICE`, else `OTEL_SERVICE_NAME` | The service name on every span. |
-| `environment` | `TELLPROOF_ENVIRONMENT` | The deployment environment, such as `production`. |
-| `instrument` | `True` | Instrument the installed client libraries. `False` leaves only the helpers. |
-| `stream_usage` | `False` | Ask OpenAI for usage on streamed chat completions (`stream_options.include_usage`) when the app has not set `stream_options`. The stream then ends with one extra chunk that has no `choices`. |
-
-Other functions: `tellproof.flush(timeout=2.0)` sends buffered spans now; `tellproof.shutdown()` flushes and stops (it also runs at exit); `tellproof.is_enabled()`; `tellproof.stats()` returns counters (`spans`, `exported`, `dropped`, `export_errors`, `instrumentation_errors`, `instrumented`). `TELLPROOF_DISABLED=1` turns the SDK off without a code change. It works across threads, `asyncio` tasks and forked workers (gunicorn, uWSGI).
-
-### Node.js and TypeScript
-
 ```js
 import * as tellproof from 'tellproof';          // or: const tellproof = require('tellproof');
-tellproof.init({ service: 'claims-api', environment: 'production' });
+tellproof.init();
 ```
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `agentUrl` | `TELLPROOF_AGENT_URL`, else `http://127.0.0.1:4318` | Where the agent listens. |
-| `service` | `TELLPROOF_SERVICE`, else `OTEL_SERVICE_NAME` | The service name on every span. |
-| `environment` | `TELLPROOF_ENVIRONMENT` | The deployment environment. |
-| `instrument` | `true` | Instrument the installed client libraries. |
-| `streamUsage` | `false` | As `stream_usage` in Python. |
+For most apps that is all. Every OpenAI, Anthropic and Amazon Bedrock call is recorded (models, regions, tokens, errors; never content), each web request is its own trace (Flask, FastAPI, Starlette and Django in Python; any Node.js HTTP server, so Express, Fastify, Koa, Nest and Next.js), and guardrails the SDK can see are recorded on their own: [OpenAI moderation, Bedrock Guardrails, Azure OpenAI content filters](#detected-without-code). `init()` is safe to call more than once and returns whether the SDK is on; `TELLPROOF_DISABLED=1` turns it off without a code change.
 
-Other functions:
+### Settings, in `init()`
 
-- `await tellproof.flush()`: call it before a serverless handler or a short script returns.
-- `await tellproof.shutdown()`, `tellproof.isEnabled()`, `tellproof.stats()`.
-- `await tellproof.ready()`: resolves once the ES-module copies of the client libraries are instrumented; await it if a module calls a model straight after `init()`.
-- `tellproof.instrument({ openai: OpenAI, anthropic: Anthropic, bedrock: await import('@aws-sdk/client-bedrock-runtime') })`: for bundled apps, or strict package managers, where the SDK cannot find the libraries itself.
+| Python | Node.js | Environment | Meaning |
+| --- | --- | --- | --- |
+| `agent` | `agent` | `TELLPROOF_AGENT_NAME` | The agent every model call belongs to (model changes are tracked per agent). |
+| `prompt`, `prompt_version` | `prompt`, `promptVersion` | `TELLPROOF_PROMPT`, `TELLPROOF_PROMPT_VERSION` | The prompt (its name and version, never its text) every model call uses. Set the version from your deploy, so every prompt change shows in the evidence (and the change check asks for it in the register). |
+| `personal_data` | `personalData` | `TELLPROOF_PERSONAL_DATA=1` | Every model call handles personal data. It counts as redacted only in requests where your [`redactor`](#mark-the-functions-you-already-have) ran. |
+| `service`, `environment` | `service`, `environment` | `TELLPROOF_SERVICE` (or `OTEL_SERVICE_NAME`), `TELLPROOF_ENVIRONMENT` | The service name and deployment environment on every span. |
+| `agent_url` | `agentUrl` | `TELLPROOF_AGENT_URL` | Where the agent listens (default `http://127.0.0.1:4318`). |
+| `requests` | `requests` | | `False` leaves web frameworks alone (no trace per request). |
+| `canaries` | `canaries` | | `False` turns the [canaries](#guardrail-canaries) off; a number is the interval (seconds in Python, milliseconds in Node.js; default an hour). |
+| `instrument` | `instrument` | | `False` leaves the client libraries alone. |
+| `stream_usage` | `streamUsage` | | Ask OpenAI for usage on streamed chat completions the app has not configured. The stream then ends with one extra chunk with no `choices`. |
+
+Settings in a scope (below) or on a call win over `init()`'s.
+
+### Mark the functions you already have
+
+Your app already has a guardrail check, a redaction step and tools. Mark each once, where it is defined, and the SDK records what it does for the request it runs in; no call site changes.
+
+```python
+@tellproof.guardrail_check              # your guardrail: returns True (or "block"/"flag") to stop the text
+def check(text): ...
+
+@tellproof.redactor                     # your redaction step
+def redact(messages): ...
+
+@tellproof.tool(high_impact=True)       # a tool with real-world effect
+def issue_refund(claim):
+    if approved_by_policy(claim):
+        tellproof.approve()             # a person or a policy approved this call
+    ...
+```
+
+```js
+const check = tellproof.guardrailCheck((text) => myGuardrail.check(text));
+const redact = tellproof.redactor(redactPII);
+const issueRefund = tellproof.tool(async function issueRefund(claim) {
+  if (approvedByPolicy(claim)) tellproof.approve();
+  ...
+}, { highImpact: true });
+```
+
+Then your request handlers need no Tellproof code at all:
+
+```python
+@app.post("/claims/{claim_id}/triage")
+def triage(claim_id: str, req: Request):
+    if check(req.text):                 # blocked: recorded as one blocked call
+        return refusal()
+    r = client.chat.completions.create(model="gpt-4.1-mini", messages=redact(req.messages))
+    if check(r.choices[0].message.content):
+        return refusal()                # an output check that blocks: this request's call counts as blocked
+    return r
+```
+
+How the decisions count:
+
+- **Per request.** A check's decision applies to the model calls of the request it ran in, before or after them; with several checks, the strictest wins (block, then flag, then allow). A request that is blocked before any model call is recorded as one blocked call. `True` or `"block"` blocks, `"flag"` flags, anything else allows; the text and the result are never recorded.
+- **Canaries come with it.** Each `guardrail_check` also receives the [canary probes](#guardrail-canaries) hourly. Mark an output-only check `@tellproof.guardrail_check(canaries=False)` (`guardrailCheck(fn, { canaries: false })`) if it is not meant to catch prompt injections.
+- **A `redactor`** that returns normally marks its request's model calls as personal data, redacted. With `init(personal_data=True)`, calls in requests where it did not run count as unredacted.
+- **Outside a web request** (a queue worker, a script), give each unit of work its own request: `@tellproof.trace` on the handler, or `with tellproof.trace():` (`tellproof.trace(() => ...)` in Node.js). Until then a check's allow or flag is not attributed to anything (a block still counts as one blocked call), and `stats()["unscoped"]` counts what was left out: Tellproof never guesses which call a decision was for.
+- Also: `@tellproof.agent_run` (`tellproof.agentRun(fn)`) makes a function one agent run; `tellproof.escalation()` records that a request was handed to a person.
+
+### Detected without code
+
+| What your app already does | What is recorded |
+| --- | --- |
+| OpenAI moderation (`moderations.create`) | A guardrail decision for the request: flag when a result is flagged, else allow. Only the `flagged` booleans are read. |
+| Bedrock Guardrails: `ApplyGuardrail`, or `guardrailConfig` on a Converse call | Block when the guardrail intervened, else allow. Only the action and the stop reason are read. |
+| Azure OpenAI (content filters on by default) | Each call is guarded: block when a choice ended on `content_filter` or the prompt was refused with the error code `content_filter`, else allow. Only the presence of the filter results, the finish reasons and the error code are read. |
+| OpenAI stored prompts (`responses.create(prompt={"id": ..., "version": ...})`) | The prompt's ID and version as the call's prompt name and version; never its text or variables. |
 
 ### What is instrumented automatically
 
@@ -336,65 +274,20 @@ Other functions:
 | --- | --- |
 | `openai` (Python and Node.js) | `chat.completions.create` / `parse` / `stream`, `responses.create` / `parse` / `stream`, `embeddings.create`, `completions.create`; sync, async and streaming. Azure OpenAI is reported as `azure.ai.openai`, other OpenAI-compatible endpoints by their host name. |
 | `anthropic` / `@anthropic-ai/sdk` | `messages.create` and `messages.stream`, and `beta.messages`. `AnthropicBedrock` and `AnthropicVertex` are reported as `aws.bedrock` and `gcp.vertex_ai`, with their region. |
-| `boto3` Bedrock Runtime / `@aws-sdk/client-bedrock-runtime` | `converse`, `converse_stream`, `invoke_model`, `invoke_model_with_response_stream` (in Node.js, the matching `*Command`s through `client.send()`). A Converse call with `guardrailConfig` is a guarded call, blocked when the stop reason is `guardrail_intervened`. |
+| `boto3` Bedrock Runtime / `@aws-sdk/client-bedrock-runtime` | `converse`, `converse_stream`, `invoke_model`, `invoke_model_with_response_stream` (in Node.js, the matching `*Command`s through `client.send()`). |
+| Web frameworks | One trace per request: Flask, FastAPI and Starlette, Django; in Node.js every server on `node:http` or `node:https`. |
 
 Per call, the SDK reads the request's model and stream flag, and from the response only the model, the usage block, the stop reason and Bedrock's token-count headers. Input tokens follow what the provider bills (Anthropic: uncached + cache writes + cache reads), so traced tokens can be reconciled with billed usage. Streams are recorded once, when they end. Calls through `invoke_model_with_response_stream` and `with_raw_response` are counted without tokens, because their counts sit only inside bodies the SDK never reads.
 
-### Record what no client library knows
-
-Tellproof's evidence objectives need a few facts only your code knows. In Python, each helper is a context manager (`with` / `async with`) and a decorator. In Node.js, it is a callback scope that returns whatever the callback returns, and follows `await`, timers and callbacks.
-
-| Python | Node.js | Records |
-| --- | --- | --- |
-| `tellproof.trace()` | `trace(fn)` | Groups everything inside into one trace, for example one web request. |
-| `tellproof.prompt(name, version)` | `prompt(name, version, fn)` | The prompt (name and version, never its text) used by calls inside. |
-| `tellproof.personal_data(redacted=False)` | `personalData({ redacted }, fn)` | Spans inside handle personal data; `redacted` means it was removed or masked before the model saw it. |
-| `tellproof.guardrail(decision=None)` | `guardrail(decision?, fn)` | The guardrail decision for calls inside: `allow`, `block` or `flag`, set later with `g.allow()`, `g.block()`, `g.flag()`. A block with no call inside counts as one blocked call. |
-| `tellproof.tool(name, high_impact=False, approved=False)` | `tool(name, { highImpact, approved }, fn)` | A tool call; an exception marks it failed. Set `t.approved = True` once a person or policy approves it. |
-| `tellproof.agent_run(name)` | `agentRun(name, fn)` | One agent run; model changes are tracked per agent. |
-| `tellproof.escalation()` | `escalation()` | The request was handed to a person. |
-| `tellproof.llm_call(provider, model, operation="chat", region=None)` | `llmCall({ provider, model, operation, region }, fn)` | A model call the SDK does not instrument; report its usage with `c.usage(input_tokens, output_tokens)`. |
-
-```python
-@app.post("/claims/{claim_id}/triage")
-def triage(claim_id: str, req: Request):
-    with tellproof.trace(), tellproof.prompt("claims-triage", "14"), tellproof.personal_data(redacted=True):
-        with tellproof.guardrail() as g:
-            if not input_policy_ok(req):
-                g.block()                      # one blocked call; the model was never called
-                return refusal()
-            r = client.chat.completions.create(model="gpt-4.1-mini", messages=redact(req.messages))
-            g.flag() if needs_review(r) else g.allow()
-            return r
-
-@tellproof.tool("issue_refund", high_impact=True)
-def issue_refund(claim):
-    ...
-```
-
-```js
-app.post('/claims/:id/triage', (req, res) =>
-  tellproof.trace(() =>
-    tellproof.prompt('claims-triage', '14', () =>
-      tellproof.personalData({ redacted: true }, () =>
-        tellproof.guardrail(async (g) => {
-          if (!inputPolicyOk(req.body)) { g.block(); return res.status(422).end(); }
-          const r = await openai.chat.completions.create({ model: 'gpt-4.1-mini', messages: redact(req.body.messages) });
-          needsReview(r) ? g.flag() : g.allow();
-          res.json(r);
-        })))));
-```
-
-Calls inside a `guardrail` scope are held until it ends, so a decision made after the call (an output check) still applies. Names and versions are capped at 128 characters.
+Other functions: `flush()` sends buffered spans now (in Node.js, `await tellproof.flush()` before a serverless handler or a short script returns); `shutdown()` flushes and stops (Python also runs it at exit); `is_enabled()` / `isEnabled()`; `stats()` returns counters (`spans`, `exported`, `dropped`, `export_errors`, `instrumentation_errors`, `unscoped`, `instrumented`). In Node.js, `await tellproof.ready()` once the ES-module copies of the client libraries are instrumented, if a module calls a model straight after `init()`, and `tellproof.instrument({ openai: OpenAI, anthropic: Anthropic, bedrock: await import('@aws-sdk/client-bedrock-runtime') })` for bundled apps or strict package managers where the SDK cannot find the libraries itself. The Python SDK works across threads, `asyncio` tasks and forked workers (gunicorn, uWSGI).
 
 ### Guardrail canaries
 
-Guardrail coverage (EO-GRD-01) shows a guardrail *ran* on every call. It cannot show the guardrail *works*: a guardrail that allows everything has full coverage. Canaries close that gap. The SDK passes a few synthetic, known-bad probes (a prompt injection, a jailbreak, made-up personal data, a documented example AWS key) to **your own guardrail check**, and records only the kind and whether it was caught. EO-CAN-01 passes when every canary was caught; a missed one fails it and names the kind.
+Guardrail coverage (EO-GRD-01) shows a guardrail *ran* on every call; it cannot show the guardrail *works*. Canaries close that gap: the SDK passes a few synthetic, known-bad probes (a prompt injection, a jailbreak, made-up personal data, a documented example AWS key) to **your own guardrail check**, and records only the kind and whether it was caught. EO-CAN-01 passes when every canary was caught; a missed one fails it and names the kind. ([Why](HOW-IT-WORKS.md#evidence-that-can-fail-canaries-and-the-self-test).)
+
+With `@tellproof.guardrail_check` (`guardrailCheck`) they run on their own, from the check's first call and then hourly, through the same function (a method gets its own instance): a sync Python check on a daemon thread, an async one on your app's event loop, in Node.js on an unref'd timer. Decorate or wrap a check once, where it is defined (at most 32 are registered). To run them yourself instead:
 
 ```python
-def guardrail_check(text: str) -> bool:      # your guardrail; True (or "block"/"flag") means it would stop the text
-    return my_guardrail.scan(text).blocked
-
 tellproof.schedule_canaries(guardrail_check, every=3600)   # now, then hourly, on a daemon thread
 tellproof.run_canaries(guardrail_check)                     # or once, e.g. from a health check: {"pii": True, ...}
 await tellproof.arun_canaries(async_guardrail_check)        # for an async check
@@ -402,17 +295,44 @@ tellproof.canary("toxicity", caught=True)                   # a canary you run y
 ```
 
 ```js
-const check = async (text) => (await myGuardrail.scan(text)).blocked;
 tellproof.scheduleCanaries(check, { every: 3_600_000 });   // now, then hourly, on an unref'd timer
 await tellproof.runCanaries(check);                        // { prompt_injection: true, ... }
 tellproof.canary('toxicity', true);
 ```
 
-- **Only the result leaves.** The probe text stays in the process (it is in `tellproof.PROBES` and [`spec/canaries.json`](spec/canaries.json)); the span carries `tellproof.canary.kind` and `tellproof.canary.caught`, in its own trace, outside any scope of yours, so it never counts as a model call, personal data or a prompt version.
-- **Send probes to the guardrail only, never to the model.** The check you pass should call your guardrail and nothing else.
+- **Only the result leaves.** The probe text stays in the process (it is in `tellproof.PROBES` and [`spec/canaries.json`](spec/canaries.json)); the span carries `tellproof.canary.kind` and `tellproof.canary.caught`, in its own trace, so it never counts as a model call, a decision, personal data or a prompt version.
+- **Probes go to the guardrail only, never to the model.** The check should call your guardrail and nothing else.
 - **A check that throws, or returns anything but `True`, `"block"` or `"flag"`, counts the canary as missed.** If your guardrail raises to block, catch that and return `True`.
 - **Off means off.** With the SDK disabled the check is never called. Scheduled runs are at least a minute apart.
 - Without canaries, EO-CAN-01 is *attention* ("No guardrail canaries run"), never fail.
+
+### Scopes, for everything else
+
+The decorators above cover most apps. Scopes say the same things explicitly for a block of code, and win over `init()` and the decorators. In Python each is a context manager (`with` / `async with`) and a decorator; in Node.js a callback scope that returns whatever the callback returns, and follows `await`, timers and callbacks.
+
+<details>
+<summary><b>Every scope</b></summary>
+
+| Python | Node.js | Records |
+| --- | --- | --- |
+| `tellproof.trace()` | `trace(fn)` | One request: a trace of its own, the request's decisions and redaction. Automatic for web requests. |
+| `tellproof.prompt(name, version)` | `prompt(name, version, fn)` | The prompt (name and version, never its text) used by calls inside. |
+| `tellproof.personal_data(redacted=False)` | `personalData({ redacted }, fn)` | Spans inside handle personal data; `redacted` means it was removed or masked before the model saw it. |
+| `tellproof.guardrail(decision=None)` | `guardrail(decision?, fn)` | The guardrail decision for calls inside: `allow`, `block` or `flag`, set later with `g.allow()`, `g.block()`, `g.flag()`. A block with no call inside counts as one blocked call. |
+| `tellproof.tool(name, high_impact=False, approved=False)` | `tool(name, { highImpact, approved }, fn)` | A tool call; an exception marks it failed. Set `t.approved = True`, or call `tellproof.approve()`, once a person or policy approves it. |
+| `tellproof.agent_run(name)` | `agentRun(name, fn)` | One agent run; model changes are tracked per agent. |
+| `tellproof.llm_call(provider, model, operation="chat", region=None)` | `llmCall({ provider, model, operation, region }, fn)` | A model call the SDK does not instrument; report its usage with `c.usage(input_tokens, output_tokens)`. |
+
+```python
+with tellproof.prompt("claims-triage", "14"), tellproof.personal_data(redacted=True):
+    with tellproof.guardrail() as g:
+        r = client.chat.completions.create(model="gpt-4.1-mini", messages=redact(req.messages))
+        g.flag() if needs_review(r) else g.allow()
+```
+
+Calls inside a `guardrail` scope are held until it ends, so a decision made after the call (an output check) still applies. Names and versions are capped at 128 characters.
+
+</details>
 
 ### For model vendors and inference providers
 
@@ -461,39 +381,43 @@ Skip the SDK and point an OTLP/HTTP **JSON** exporter at `http://127.0.0.1:4318/
 
 </details>
 
-Message attributes (`gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.prompt*`, `gen_ai.completion*`, `llm.prompts.*`, `llm.completions.*`) are never read: their presence is counted and their values dropped at parse time. Use either the SDK or your exporter for the same calls, not both, or they are counted twice.
+Message attributes are never read: their presence is counted (`content_present_spans`, objective EO-CNT-01) and their values dropped at parse time. They are the GenAI and OpenLLMetry names (`gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`, `gen_ai.prompt*`, `gen_ai.completion*`, `llm.prompts.*`, `llm.completions.*`), OpenInference (`input.value`, `output.value`, `llm.input_messages.*`, `llm.output_messages.*`), Traceloop (`traceloop.entity.input`, `traceloop.entity.output`), Langfuse (`langfuse.observation.input`, `langfuse.observation.output`) and the Vercel AI SDK (`ai.prompt`, `ai.prompt.messages`, `ai.response.text`, `ai.toolCall.args`, `ai.toolCall.result`); the list is `presence_only` in [`spec/semconv-map.json`](spec/semconv-map.json). If EO-CNT-01 fails, turn content capture off in your instrumentation: for example `TRACELOOP_TRACE_CONTENT=false`, `OPENINFERENCE_HIDE_INPUTS=true` and `OPENINFERENCE_HIDE_OUTPUTS=true`, or `recordInputs: false` and `recordOutputs: false` in the Vercel AI SDK's `experimental_telemetry`. Use either the SDK or your exporter for the same calls, not both, or they are counted twice.
 
 ---
 
 ## Run the agent
 
-### Modes
+### Locally
 
 | Command | What it does |
 | --- | --- |
-| `tellproof-agent run --local` | **Local mode.** No account, server or token. Signs batches with its own key, keeps them in `<data-dir>/local`, and serves the dashboard on `127.0.0.1:4319`. Nothing is sent. (`tellproof-agent local` does the same.) |
-| `tellproof-agent connect <token>` | **Connected mode, in one command.** Enrols with a one-time token from the Tellproof app (unless the data directory is already enrolled), keeps a salt secret in the data directory, then runs and sends signed batches to `TELLPROOF_SERVER`. Running it again later just runs. |
+| `tellproof-agent start` | **Local mode, in the background.** No account, server or token. Signs batches with its own key, keeps them in `<data-dir>/local`, serves the dashboard on `127.0.0.1:4319`, and returns once it listens. Its output goes to `<data-dir>/agent.log`. `--open` opens the dashboard. |
+| `tellproof-agent stop` | Lets it finish and exit; the evidence stays. It also stops an agent running in the foreground. `--force` ends one that has not stopped after 15 seconds. |
+| `tellproof-agent status` | Whether it runs, its pid, since when, and where (spans, dashboard, evidence, log). Exit 0 running, 3 not. `--json`. |
+| `tellproof-agent restart` | Stop, then start: for example after upgrading. |
+| `tellproof-agent logs [-f]` | The background agent's log; `-f` follows it. |
+| `tellproof-agent run --local` | The same agent in the foreground, for a terminal you keep open or a container. Ctrl-C, or `stop` from another terminal, ends it. (`tellproof-agent local` does the same.) |
+
+The commands find the agent through its data directory (`./.tellproof-agent` by default), so run them in the directory you started it from, or pass the same `--data-dir` or `--config`. Only one agent runs per data directory.
+
+### Connected, and other modes
+
+| Command | What it does |
+| --- | --- |
+| `tellproof-agent connect <token>` | **Connected mode, in one command.** Enrols with a one-time token from the Tellproof app (unless the data directory is already enrolled), keeps a salt secret in the data directory, then runs and sends signed batches to `TELLPROOF_SERVER`. Running it again later just runs. Run it under a service manager or in a container. |
 | `tellproof-agent enrol --config agent.json` | Enrol only, with the token from `--token` or `TELLPROOF_ENROL_TOKEN`. |
 | `tellproof-agent run --config agent.json` | Run an enrolled agent with a config file (sources, aggregation settings). |
 | `tellproof-agent run --config agent.json --dry-run` | Print every batch it would send, with its payload decoded; send, queue and store nothing. Works before enrolment. |
 | `tellproof-agent run --config agent.json --dry-run --replay export.jsonl` | Feed an OTLP JSON export through the pipeline, print every window and exit: the fastest way to see what Tellproof would make of traces you already have. |
-| `tellproof-agent report` | Verify and summarise the local log in the terminal. |
-| `tellproof-agent check` | Evaluate the local log against the eleven evidence objectives and your policy ([governance as code](#governance-as-code-policy-check-and-ai-bom)). |
-| `tellproof-agent aibom` | Write a CycloneDX AI bill of materials from the log. |
 | `tellproof-agent dashboard --data-dir <dir>` | Serve the dashboard on its own for a data directory (a copied log, or one written elsewhere). |
-| `tellproof-agent version` | Print the version. |
 
-A local-mode data directory and an enrolled one never mix: `connect` refuses a local data directory, and local mode refuses an enrolled one. Local batches stay local; connecting starts a new agent with its own data directory.
-
-### Hourly windows
-
-Spans are aggregated into hourly windows (UTC). A window closes `grace_minutes` (default 5) after the hour, so late spans still count; spans later than that go into the next window and are counted as late. After a start, the open hour is also sent once, `first_batch_seconds` (default 60) after the first spans, so a new agent shows up at once. Windows are additive, so the rest of that hour follows when it closes. Each batch names the previous batch's digest and carries the next sequence number, so a lost, edited or replayed batch is detected.
+A local-mode data directory and an enrolled one never mix: `connect` refuses a local data directory, and local mode refuses an enrolled one. Batches are hourly (UTC); the first one appears about a minute after the first span. [How windows, chaining and commitments work](HOW-IT-WORKS.md#from-a-model-call-to-a-signed-batch).
 
 ---
 
 ## The dashboard
 
-`tellproof-agent run --local` serves it on **http://127.0.0.1:4319**. It reads the same verified log as `report`, so the two can never disagree.
+`tellproof-agent start` (or `run --local`) serves it on **http://127.0.0.1:4319**. It reads the same verified log as `report`, so the two can never disagree.
 
 | Panel | Shows |
 | --- | --- |
@@ -508,7 +432,7 @@ Spans are aggregated into hourly windows (UTC). A window closes `grace_minutes` 
 
 Choose a range with the buttons (24 hours, 7 days, 30 days, All); a link can pick one with `#range=7d`. Hover a chart, or focus it and use the arrow keys, for an hour's figures; every chart also has a table view. It refreshes every 30 seconds, follows your system's light or dark theme, and works at phone width.
 
-The agent serves it on loopback only. It answers only GET requests, refuses any request whose Host is not a local name (so a web page cannot read it through DNS rebinding), loads nothing from anywhere else, and stores nothing but your chosen range. Move it with `dashboard_listen` or `TELLPROOF_DASHBOARD_LISTEN`, or turn it off with `off`. To look at a log somewhere else: `tellproof-agent dashboard --data-dir /path/to/copy --listen 127.0.0.1:4320`.
+It is served on loopback only and is read-only ([details](HOW-IT-WORKS.md#security-model)). Move it with `dashboard_listen` or `TELLPROOF_DASHBOARD_LISTEN`, or turn it off with `off`. To look at a log somewhere else: `tellproof-agent dashboard --data-dir /path/to/copy --listen 127.0.0.1:4320`.
 
 ---
 
@@ -547,7 +471,7 @@ Anomaly         2026-09-01T00:00:00Z to 2026-09-01T01:00:00Z: guardrail_rate
 The report checks every batch's signature against `agent.pub`, that the sequence runs from 1 without gaps, that each batch names the previous batch's digest, and that no batch is missing from the end. If any check fails it says where, and exits **1**, so it can gate a CI job or a cron alert. `--since` and `--until` limit the figures, never the checks.
 
 > [!NOTE]
-> A local log proves it has not changed since it was written, relative to `agent.pub`. Keep a copy of `agent.pub` somewhere else, or give it to a reviewer up front. For evidence signed by an independent issuer, see [the hosted service](#signed-evidence-packs-the-hosted-service-early-access).
+> A local log proves it has not changed since it was written, relative to `agent.pub`. Keep a copy of `agent.pub` somewhere else, or give it to a reviewer up front. For evidence signed by an independent issuer, see [signed evidence packs](#signed-evidence-packs-early-access).
 
 ---
 
@@ -648,7 +572,7 @@ The dashboard shows the same check for the selected range in its **Evidence obje
 </picture>
 
 > [!NOTE]
-> `check` is a self-assessment: the evidence is signed by your own agent's key and evaluated by you. A [pack](#signed-evidence-packs-the-hosted-service-early-access) is the same evaluation, signed by an independent issuer.
+> `check` is a self-assessment: the evidence is signed by your own agent's key and evaluated by you. A [pack](#signed-evidence-packs-early-access) is the same evaluation, signed by an independent issuer.
 
 ### Prove it can fail: `check --self-test`
 
@@ -685,20 +609,20 @@ Is tampering with the log detected?
 The repository is also a GitHub Action. Validate the policy on every pull request that changes it:
 
 ```yaml
-- uses: Lumetrix-Advanced-Technologies/tellproof@v0.3.0
+- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.0
   with: { command: validate, policy: tellproof.policy.json }
 ```
 
 Or gate a release on the evidence, with a copy of the agent's data directory (from a scheduled job, an artifact or a volume snapshot):
 
 ```yaml
-- uses: Lumetrix-Advanced-Technologies/tellproof@v0.3.0
+- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.0
   with: { command: check, policy: tellproof.policy.json, data-dir: evidence/, strict: "true" }
 ```
 
 Add `command: self-test` as a second step to show the check could have failed.
 
-It installs `tellproof-agent` from PyPI, writes `tellproof-check.xml` (JUnit), puts the result in the job summary, and fails the job when an objective fails.
+It installs the `tellproof-agent` release it belongs to from PyPI (so pinning the Action pins the agent; `version:` picks another, `latest` the newest), writes `tellproof-check.xml` (JUnit), puts the result in the job summary, and fails the job when an objective fails.
 
 ### 3. Inventory: `tellproof-agent aibom`
 
@@ -765,6 +689,8 @@ steps:
 Anyone can then check it: `gh attestation verify ci-evidence.json -R acme/app`, then `tellproof-verify ci --unsigned --commit <sha> --require lint,tests --canary tests ci-evidence.json`.
 
 </details>
+
+---
 
 ---
 
@@ -857,64 +783,11 @@ The agent polls the providers' usage APIs with an admin key (limit it to this sy
 
 ---
 
-## What leaves your machine
-
-**In local mode, nothing.** In connected mode, one signed batch per hour, defined by [`spec/batch.schema.json`](spec/batch.schema.json) (`plumbline-batch/v0.2`), or, for an hour with guardrail canaries, [`spec/batch-v0.3.schema.json`](spec/batch-v0.3.schema.json), which adds `"canaries": [{"kind": "pii", "run": 1, "caught": 1}]`: counts per kind, never the probes.
-
-<details>
-<summary><b>A real batch, trimmed</b> (<code>tellproof-agent run --dry-run</code> shows yours)</summary>
-
-```json
-{
-  "schema": "plumbline-batch/v0.2",
-  "agent_id": "agt_dryrun0000000000",
-  "seq": 1,
-  "prev": null,
-  "window": { "start": "2026-09-01T00:00:00Z", "end": "2026-09-01T01:00:00Z" },
-  "metrics": {
-    "tokens": [ { "provider": "aws.bedrock", "model": "anthropic.claude-sonnet-4-5", "region": "ap-southeast-2",
-                  "calls": 120, "input_tokens": 151140, "output_tokens": 36357 } ],
-    "pii": { "pii_spans": 30, "pii_spans_redacted": 27 },
-    "content_present_spans": 120,
-    "guardrails": { "llm_calls": 160, "guarded_calls": 120, "blocked": 5 },
-    "agent": { "runs": 120, "tool_calls": 120, "tool_errors": 4, "high_impact_calls": 12, "high_impact_approved": 6, "escalations": 1 }
-  },
-  "commit": { "root": "0d98141acd04af7a42b105bc3ea41d751f0e8227e6baa89bcf716dc946dc701a", "leaves": 120 }
-}
-```
-
-</details>
-
-A full batch also lists evaluation runs, model and prompt changes, anomaly windows, which models and prompt versions were live, late spans and provider usage. It **never** contains:
-
-- prompts, completions, messages or any span content;
-- tool arguments, return values or exception messages;
-- end-user identifiers, IP addresses or request bodies;
-- raw trace IDs.
-
-Each trace becomes a leaf `sha256(0x00 ‖ salt ‖ trace_id)`, where the salt is derived from a secret that stays with you. The commitment reveals nothing, yet a single trace can later be disclosed and proved to be in it.
-
-### The data directory
-
-| File | What it is |
-| --- | --- |
-| `agent.key` (0600) | The agent's Ed25519 private key. It signs every batch; losing it means a new agent. |
-| `agent.json` | The agent ID (and the server, when enrolled). |
-| `agent.pub` | Local mode: the public key, to verify the log without the private key. |
-| `local/` | Local mode: the signed, chained batches, never sent. |
-| `queue/` | Connected mode: batches the server has not accepted yet, fsynced before they are acknowledged and retried with backoff of up to 15 minutes. |
-| `leaves/` | Each window's commitment leaves, for disclosing a trace later. |
-| `salt.secret` (0600) | The salt secret, when the agent made one. |
-
-Keep and back up the data directory. In the container it is the `tellproof-agent` volume.
-
----
-
 ## Deploying the agent
 
 ### Next to the app on one host
 
-Run the agent as a service (systemd, launchd, or a container with `--restart unless-stopped`) and leave the defaults: the SDK finds it on `127.0.0.1:4318`.
+For development, `tellproof-agent start`. For a server, run the agent as a service (systemd, launchd, or a container with `--restart unless-stopped`) and leave the defaults: the SDK finds it on `127.0.0.1:4318`.
 
 ### Docker Compose
 
@@ -927,7 +800,7 @@ services:
       TELLPROOF_SERVICE: claims-api
       TELLPROOF_ENVIRONMENT: production
   tellproof-agent:
-    image: ghcr.io/lumetrix-advanced-technologies/tellproof-agent:v0.2.0
+    image: ghcr.io/lumetrix-advanced-technologies/tellproof-agent:latest
     command: ["run", "--local"]                 # or ["connect", "<token>"], with TELLPROOF_SERVER set
     ports: ["127.0.0.1:4319:4319"]              # the dashboard, on the host's loopback only
     volumes: ["tellproof-agent:/data"]
@@ -945,7 +818,7 @@ containers:
     env:
       - { name: TELLPROOF_AGENT_URL, value: "http://127.0.0.1:4318" }
   - name: tellproof-agent
-    image: ghcr.io/lumetrix-advanced-technologies/tellproof-agent:v0.2.0
+    image: ghcr.io/lumetrix-advanced-technologies/tellproof-agent:latest
     args: ["run", "--local"]
     volumeMounts: [{ name: tellproof-data, mountPath: /data }]
 ```
@@ -958,51 +831,17 @@ Call `tellproof.flush()` (in Node.js, `await tellproof.flush()`) before the hand
 
 ---
 
-## Signed evidence packs: the hosted service (early access)
+## Signed evidence packs (early access)
 
-The local log is signed by your own key, and `tellproof-agent check` is your own evaluation of it. Reviewers usually need evidence signed by someone other than the vendor. That is what the hosted Tellproof service adds: the same evaluation, signed by an independent issuer, chained month to month and listed in a public checkpoint.
+The local log is signed by your own key, and `check` is your own evaluation of it. Reviewers usually need evidence signed by someone other than the vendor. The hosted Tellproof service adds that: the same evaluation of the eleven objectives, signed by an independent issuer (a key held in AWS KMS), chained month to month, listed in a public daily checkpoint, and shared with reviewers by link.
 
-> [!NOTE]
-> The hosted service is in early access. [Request access](https://github.com/Lumetrix-Advanced-Technologies/tellproof/issues/new?template=early-access.yml); everything else on this page works today without it.
+[Request early access](https://github.com/Lumetrix-Advanced-Technologies/tellproof/issues/new?template=early-access.yml); everything else on this page works today without it. Once you have an AI system and an enrolment token in the Tellproof app, run the agent connected, keeping the SDK line in your app as before:
 
-### What you get
+```bash
+TELLPROOF_SERVER=https://<server> tellproof-agent connect <token>
+```
 
-**Eleven evidence objectives**, evaluated for each AI system over each period:
-
-| ID | Objective | Passes when |
-| --- | --- | --- |
-| EO-LOG-01 | Trace coverage | Traced tokens are at least 98% of the provider's billed tokens. |
-| EO-LIN-01 | Model and provider lineage | Every model seen was declared. |
-| EO-CHG-01 | Material-change log | No model or prompt change is missing from the change register. |
-| EO-PII-01 | PII redaction coverage | Every span with personal data was redacted. |
-| EO-CNT-01 | Content minimisation | No span reached the agent carrying message content. |
-| EO-GRD-01 | Guardrail coverage | At least 99.5% of model calls had a guardrail decision. |
-| EO-EVAL-01 | Eval freshness | Every live model and prompt version passed an evaluation (pass rate at least 0.9) in the last 7 days. |
-| EO-INC-01 | Incident register | Every anomaly hour was acknowledged in the incident register. |
-| EO-AGT-01 | Agent action safety | Tool calls fail at most 1% of the time. |
-| EO-RES-01 | Inference residency | Every region seen was declared. |
-| EO-CAN-01 | Guardrail canaries | Every synthetic known-bad probe sent through the guardrail was caught ([canaries](#guardrail-canaries)). |
-
-Results near a threshold are marked *attention* rather than pass or fail. Each objective lists the framework references it supports, by ID (for example ISO/IEC 42001 controls): see [`spec/objectives.json`](spec/objectives.json) and [`spec/framework-refs.json`](spec/framework-refs.json).
-
-Besides the objectives:
-
-- **Monthly packs.** An in-toto statement in a DSSE envelope over canonical JSON (RFC 8785), signed with an ECDSA P-256 key held in AWS KMS, chained to the previous pack by digest, with a Merkle commitment to the period's traces.
-- **Share links** for reviewers, which expire and can be revoked, with view counts.
-- **A public daily checkpoint** of every pack digest issued that day, signed and chained, so a pack cannot be backdated quietly.
-- **Vanta:** an hourly sync of each objective's status with a verify link, and the packs as documents.
-
-### The workflow, step by step
-
-1. [Request early access](https://github.com/Lumetrix-Advanced-Technologies/tellproof/issues/new?template=early-access.yml), and pick what fits: hosted packs, design partner, evidence for models you serve, or reviewer.
-2. In the Tellproof app, create your organisation and an AI system, and declare its models, regions and timezone.
-3. Create an enrolment token on the system's *Setup and sources* page. The page shows the exact command.
-4. Run the agent with it: `TELLPROOF_SERVER=https://<server> tellproof-agent connect <token>`, or the `docker run` line the page shows. Keep the SDK line in your app as before.
-5. Record changes, incidents and evaluation runs in the system's registers (by form or CSV upload), so the change and incident objectives have something to compare with.
-6. Issue a pack for a period (by default, the previous calendar month).
-7. Create a share link for a reviewer (for one pack, or always the latest) and send it.
-8. The reviewer opens it, and the verify page checks the pack in their browser. Or they download it and run `tellproof-verify`.
-9. Optionally, connect Vanta in Settings.
+[What a pack contains, the step-by-step workflow, and the objectives](HOW-IT-WORKS.md#signed-evidence-packs-the-hosted-service).
 
 ---
 
@@ -1010,7 +849,7 @@ Besides the objectives:
 
 ### In the browser
 
-Open a share link: the verify page fetches the pack and the issuer's keys, and checks everything in your browser with Web Crypto. Or open the verify page with no link, choose the issuer's JWKS file and one or more pack files, and it checks them offline, with no network at all. It shows a pack's contents only after its signature verifies.
+Open a share link: the verify page checks the pack in your browser. Or open the verify page with no link, choose the issuer's JWKS file and one or more pack files, and it checks them offline, with no network at all.
 
 ### Offline, with tellproof-verify
 
@@ -1049,22 +888,7 @@ pip install cryptography
 python3 concierge/verify.py issuer-jwks.json pack.dsse.json
 ```
 
-### Write your own verifier
-
-[`spec/vectors/README.md`](spec/vectors/README.md) gives the formats and the four manifests every verifier must match: pass and fail packs, extra cases, key-validity cases and canonical-JSON cases. If your verifier disagrees with ours on any case, one of us has a bug: please [report it privately](SECURITY.md).
-
----
-
-## Security model
-
-- **No content leaves the customer.** The SDKs never read message content, the agent drops message attributes at parse time, and batches carry only counts, short names and commitments. `--dry-run` shows exactly what would be sent.
-- **One destination.** In connected mode the agent sends batches only to the server you configure; the only other outbound calls are the read-only Langfuse and provider usage APIs you turn on. In local mode it sends nothing.
-- **Keys stay where they are made.** The agent's Ed25519 key is generated on your machine (mode 0600); the issuer's signing key never leaves AWS KMS.
-- **Tamper-evident at every step.** Batches are signed and chained. Packs are signed, chained and listed in a public daily checkpoint. Keys are published with validity dates and a revocation list.
-- **The receiver has no authentication**, so it listens on loopback unless you allow otherwise, on a network you control. The dashboard is loopback-only and read-only, and refuses non-local Host names.
-- **What we do not claim.** A pack shows what your telemetry shows: calls that bypass the agent are not in it (trace coverage measures that gap against billed usage). A signature proves who signed and that nothing changed since; it does not prove the telemetry was complete or truthful.
-
-The full statement is on the [security page](web/security/index.html).
+To write your own verifier, see [`spec/vectors/README.md`](spec/vectors/README.md) and [Verification](HOW-IT-WORKS.md#verification).
 
 ---
 
@@ -1072,8 +896,17 @@ The full statement is on the [security page](web/security/index.html).
 
 ### tellproof-agent
 
+Also `tellproof` (installed with the SDK) and `npx tellproof` (in an npm project): the same commands.
+
 ```
 tellproof-agent                                   # in a terminal: the welcome banner and first steps
+tellproof-agent init [--name <ai system>] [--timezone <tz>] [--yes] [--no-start] [--force]
+tellproof-agent doctor [--config <agent.json>] [--data-dir <dir>] [--policy <file>] [--json]
+tellproof-agent demo [--data-dir <new dir>] [--days 7] [--listen <host:port>]
+tellproof-agent start | restart [--config <agent.json>] [--data-dir <dir>] [--open]
+tellproof-agent stop [--config <agent.json>] [--data-dir <dir>] [--force]
+tellproof-agent status [--config <agent.json>] [--data-dir <dir>] [--json]
+tellproof-agent logs [--config <agent.json>] [--data-dir <dir>] [-n <lines>] [-f]
 tellproof-agent run --local [--config <agent.json>]
 tellproof-agent report [--config <agent.json>] [--data-dir <dir>] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
 tellproof-agent dashboard [--config <agent.json>] [--data-dir <dir>] [--listen <host:port>]
@@ -1096,6 +929,15 @@ tellproof-agent version
 | Flag | Commands | Meaning |
 | --- | --- | --- |
 | `--config <file>` | all | The agent config file (optional for `run --local`, `connect`, `report` and `dashboard`). |
+| `--name`, `--timezone` | `init` | The AI system's name (default: the directory's) and IANA time zone (default `$TZ`, else UTC); in a terminal, init asks. |
+| `--yes`, `--no-start`, `--force` | `init` | Take every default and ask nothing; do not start the agent (without a terminal it never does; otherwise it starts in the background); replace an existing `tellproof.policy.json`. |
+| `--data-dir <dir>` | `start`, `stop`, `restart`, `status`, `logs` | The data directory of the agent to act on (default from the config, `./.tellproof-agent`). |
+| `--open` | `start`, `restart` | Open the dashboard in the browser. |
+| `--force` | `stop` | End the agent if it has not stopped 15 seconds after being asked. |
+| `--json` | `status` | Print JSON: `running`, `data_dir` and the agent's pid, start time, version, ID and addresses. |
+| `-n <lines>`, `-f` | `logs` | How many lines to print (default 40); keep printing new ones. |
+| `--json` | `doctor` | Print the checks as JSON (`ok`, and each check's `status`, `detail` and `fix`). |
+| `--data-dir`, `--days`, `--listen` | `demo` | A new or empty directory for the synthetic log (default a temporary one), how many days (1 to 90), and the dashboard's address. |
 | `--local` | `run` | Local mode: no server, signed batches kept in the data directory, dashboard served. |
 | `--dry-run` | `run` | Print every batch with its payload decoded; send, queue and store nothing. |
 | `--replay <file>` | `run` | Feed an OTLP JSON export (one request per line) through the pipeline, then exit. |
@@ -1111,7 +953,7 @@ tellproof-agent version
 | `--self-test` | `check` | Show that each objective fails on evidence built to fail it and that tampering with the log is detected ([details](#prove-it-can-fail-check---self-test)). |
 | `--out <file>` | `aibom` | Write the BOM to a file instead of standard output. |
 
-Exit status: **0** ok, **1** a runtime error (for `report`, a verification failure; for `check`, a failed objective or an unverified log; for `policy validate`, an invalid policy), **2** a usage or configuration error.
+Exit status: **0** ok, **1** a runtime error (for `status`, **3** means not running; for `doctor`, a failed check; for `report`, a verification failure; for `check`, a failed objective or an unverified log; for `policy validate`, an invalid policy), **2** a usage or configuration error.
 
 ### tellproof-verify
 
@@ -1128,8 +970,14 @@ Exit status: **0** all verified, **1** a check failed, **2** a usage or input er
 
 ## Troubleshooting
 
+Start with `tellproof-agent doctor`. It checks the configuration, the data directory and its permissions (and whether git would commit the agent's key), whether the agent answers on its ports or something else holds them, where the SDKs will send (`TELLPROOF_AGENT_URL`), the evidence log's verification, whether spans are still arriving, how many spans arrived with content (dropped at parse time), the clock, and the policy; each problem comes with its fix. It sends no spans and contacts only the agent's own addresses. `--json` for scripts; exit 1 when a check fails. What doctor cannot see is the app's side: `tellproof.stats()` there shows `spans`, `exported`, `dropped` and `export_errors`.
+
 | Symptom | What to check |
 | --- | --- |
+| `tellproof: the Tellproof agent is not installed` | Install it with the SDK: `pip install "tellproof[agent]"`, or `npm install tellproof` without `--omit=optional`. |
+| `start` says the agent stopped while starting | It prints the reason from the log: usually a port in use (`TELLPROOF_OTLP_LISTEN`, `TELLPROOF_DASHBOARD_LISTEN`) or a data directory enrolled for connected mode. |
+| "an agent already runs on …" | One agent per data directory: `tellproof-agent status` shows it, `tellproof-agent stop` stops it. |
+| `stop` or `status` finds no agent, but one is running | They look in the data directory of the current directory. Run them where you started the agent, or pass `--data-dir`. |
 | The dashboard says "Waiting for your first model call" | Is the app calling `tellproof.init()` before its first model call, and can it reach `TELLPROOF_AGENT_URL`? `tellproof.stats()` shows `exported` and `export_errors`. The first batch comes about a minute after the first span. |
 | `stats()` shows `spans: 0` | The client library is not instrumented: check `stats()["instrumented"]`. In Node.js ES modules, `await tellproof.ready()`; in bundled apps, use `tellproof.instrument({...})`. Or wrap the call in `llm_call`. |
 | Counts are doubled | The SDK and another OpenTelemetry exporter both send the same calls. Use one. |
@@ -1151,13 +999,15 @@ Exit status: **0** all verified, **1** a check failed, **2** a usage or input er
 
 ### Upgrading from Plumbline
 
-| v0.2 (Plumbline) | v0.3 (Tellproof) | Do you need to change it? |
+Tellproof was called Plumbline until v0.2. Everything from v0.2 keeps working:
+
+| v0.2 (Plumbline) | v0.3 and later (Tellproof) | Do you need to change it? |
 | --- | --- | --- |
 | `pip install plumbline-sdk`, `import plumbline` | `pip install tellproof`, `import tellproof` | Yes: the old packages have been removed from PyPI and npm. |
 | `npm install plumbline-sdk` | `npm install tellproof` | Yes. |
 | `plumbline-agent` (pip, npm, binary, image) | `tellproof-agent` | Yes. The new agent picks up the old data directory, identity and hash chain. The v0.1 and v0.2 release binaries stay on the Releases page. |
 | `PLUMBLINE_*` environment variables | `TELLPROOF_*` | No: the old names are read when the new ones are unset. |
-| `plumbline.*` span attributes | `tellproof.*` | No: both are mapped (`spec/semconv-map.json` v3). |
+| `plumbline.*` span attributes | `tellproof.*` | No: both are mapped (`spec/semconv-map.json` since v3). |
 | `plumbline.policy.json`, `./.plumbline-agent` | `tellproof.policy.json`, `./.tellproof-agent` | No: the old names are used when the new ones do not exist. |
 | Batches (`plumbline-batch/v0.2`), packs, signatures | the same | No: the wire formats are frozen, so every existing batch and pack still verifies. |
 
@@ -1196,6 +1046,8 @@ The tests need Go 1.26+, Node.js 22+ and Python 3.10+ with `cryptography`. The G
 | `action.yml` | The GitHub Action for `policy validate` and `check`. |
 | `packaging/` | The pip and npm package builders. |
 | `examples/` | Sample Python and Node.js apps with the one-line integration. |
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how pull requests land, the [Code of Conduct](CODE_OF_CONDUCT.md), and [How Tellproof works](HOW-IT-WORKS.md) for the design.
 
 Every change keeps two rules: **no content leaves the customer** (no code path in the agent or the SDKs may send prompt or completion text, span content or raw trace IDs), and **the verifiers agree** (test vectors are added, never changed). The SDKs must never break or block the host app.
 

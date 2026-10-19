@@ -272,3 +272,102 @@ test('the ES module finder follows exports, never the bundler-only module field'
   assert.equal(ins.esmEntry('only-module', req), null); // Node serves import from main: one copy
   assert.ok(ins.esmEntry('openai', req).endsWith('/node_modules/openai/index.mjs'));
 });
+
+// Acceptance (P8-3, D-065): the leak corpus (spec/leak-corpus.json, shared with
+// the agent and the Python SDK) in every request position the clients and the
+// helpers see, and the canary probes, never reach an export. The fake
+// libraries' responses and errors carry MARKER, checked the same way.
+test('nothing of the leak corpus reaches an export', async () => {
+  const { readFileSync } = await import('node:fs');
+  const spec = (f) => JSON.parse(readFileSync(new URL(`../../../spec/${f}`, import.meta.url), 'utf8'));
+  const corpus = spec('leak-corpus.json');
+  const probes = spec('canaries.json').probes;
+  const TEXT = corpus.markers.map((m) => m.text).join(' | ');
+  const needles = [...corpus.markers.map((m) => m.needle), ...probes.map((p) => p.text.slice(0, 40)), 'CONTENT-MARKER'];
+  const exports = [];
+  const exp = new Exporter((b) => exports.push(b), (spans) => otlp.encode(spans, { 'service.name': 't' }, 't'), { intervalMs: 5 });
+  core.setClient(new core.Client(exp, { service: 't' }));
+  ins.setStreamUsage(true);
+  const msgs = [
+    { role: 'system', content: TEXT },
+    { role: 'user', content: [{ type: 'text', text: TEXT }, { type: 'image_url', image_url: { url: 'https://example.com/?q=' + TEXT } }] },
+    { role: 'assistant', content: TEXT, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'lookup', arguments: TEXT } }] },
+    { role: 'tool', tool_call_id: 'c1', content: TEXT },
+  ];
+  const tools = [{ type: 'function', function: { name: 'lookup', description: TEXT, parameters: { type: 'object', description: TEXT } } }];
+  const anth = [
+    { role: 'user', content: [{ type: 'text', text: TEXT }, { type: 'tool_result', tool_use_id: 't1', content: TEXT }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'lookup', input: { q: TEXT } }] },
+  ];
+  const conv = [{ role: 'user', content: [{ text: TEXT }, { toolResult: { toolUseId: 't1', content: [{ text: TEXT }] } }] }];
+  for (const libs of [cjs, esm]) {
+    const o = new libs.openai.OpenAI();
+    const an = new libs.anthropic.Anthropic();
+    const B = libs.bedrock;
+    const b = new B.BedrockRuntimeClient();
+    await o.chat.completions.create({ model: 'gpt-4.1-mini', messages: msgs, tools, user: TEXT, metadata: { note: TEXT } });
+    for await (const _ of await o.chat.completions.create({ model: 'gpt-4.1-mini', messages: msgs, stream: true }));
+    await o.responses.create({ model: 'gpt-5', input: TEXT, instructions: TEXT, tools });
+    for await (const _ of await o.responses.create({ model: 'gpt-5', input: [{ role: 'user', content: TEXT }], stream: true }));
+    await o.embeddings.create({ model: 'text-embedding-3-small', input: [TEXT, TEXT] });
+    await o.completions.create({ model: 'gpt-3.5-turbo-instruct', prompt: TEXT, suffix: TEXT });
+    await an.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 1, system: TEXT, messages: anth, tools: [{ name: 'lookup', description: TEXT, input_schema: {} }], metadata: { user_id: TEXT } });
+    await an.messages.stream({ model: 'claude-sonnet-4-5', max_tokens: 1, system: [{ type: 'text', text: TEXT }], messages: anth }).finalText();
+    await b.send(new B.ConverseCommand({ modelId: 'anthropic.claude-sonnet-4-5', messages: conv, system: [{ text: TEXT }], toolConfig: { tools: [{ toolSpec: { name: 'lookup', description: TEXT } }] } }));
+    for await (const _ of (await b.send(new B.ConverseStreamCommand({ modelId: 'anthropic.claude-sonnet-4-5', messages: conv }))).stream);
+    await b.send(new B.InvokeModelCommand({ modelId: 'anthropic.claude-sonnet-4-5', body: JSON.stringify({ prompt: TEXT }) }));
+    await assert.rejects(o.chat.completions.create({ model: 'boom', messages: msgs }));
+    await assert.rejects(an.messages.create({ model: 'boom', max_tokens: 1, messages: anth }));
+    await assert.rejects(b.send(new B.ConverseCommand({ modelId: 'boom', messages: conv })));
+  }
+  // The helpers: the app's own call, a tool and an agent run failing with content, and the canaries.
+  await assert.rejects(tellproof.trace(() => tellproof.prompt('triage', '14', () => tellproof.personalData({ redacted: true }, () =>
+    tellproof.guardrail('allow', () => tellproof.llmCall({ provider: 'openai', model: 'gpt-4.1-mini' }, async (c) => {
+      c.usage(3, 1);
+      throw new Error(TEXT);
+    }))))));
+  await assert.rejects(tellproof.agentRun('refund-agent', () => tellproof.tool('lookup_policy', async () => {
+    throw new Error(TEXT);
+  })));
+  const seen = [];
+  const caught = await tellproof.runCanaries((probe) => { seen.push(probe); return true; });
+  assert.equal(seen.length, probes.length);
+  assert.ok(Object.values(caught).every(Boolean));
+  // The simpler usage (D-069): a check and a redactor that take and return
+  // content, wrapped tools and agent runs that throw it, detected guardrails,
+  // Azure filter results and a stored prompt's variables.
+  core.configure({ agent: 'triage', prompt: 'claims', promptVersion: '14', personalData: true });
+  const saved = core.checks.splice(0);
+  try {
+    const check = tellproof.guardrailCheck(async () => TEXT, { canaries: false });
+    const redact = tellproof.redactor(() => TEXT);
+    const lookup = tellproof.tool(async function lookup() { tellproof.approve(); throw new Error(TEXT); }, { highImpact: true });
+    const refund = tellproof.agentRun(async function refund(q) { await lookup(q); });
+    const o = new cjs.openai.OpenAI();
+    const B = cjs.bedrock;
+    await tellproof.trace(async () => {
+      redact(TEXT);
+      await check(TEXT);
+      await o.moderations.create({ input: TEXT });
+      await new B.BedrockRuntimeClient().send(new B.ApplyGuardrailCommand({ guardrailIdentifier: 'g', guardrailVersion: '1', source: 'INPUT', content: [{ text: { text: TEXT } }] }));
+      await o.responses.create({ model: 'gpt-5', input: TEXT, prompt: { id: 'pmpt_1', version: '2', variables: { x: TEXT } } });
+      await new cjs.openai.AzureOpenAI().chat.completions.create({ model: 'gpt-4.1-mini', messages: [{ role: 'user', content: TEXT }] });
+      await assert.rejects(refund(TEXT));
+    });
+    await check(TEXT); // outside a request
+    redact(TEXT);
+  } finally {
+    core.checks.splice(0, core.checks.length, ...saved);
+    core.configure();
+  }
+  await new Promise((r) => setImmediate(r));
+  assert.equal(await exp.flush(5000), true);
+  const blob = exports.join('');
+  assert.ok(blob.split('"spanId"').length - 1 >= 30);
+  assert.ok(blob.includes('pmpt_1') && blob.includes('"lookup"'), 'the D-069 section ran');
+  const low = blob.toLowerCase();
+  for (const n of needles) {
+    const i = low.indexOf(n.toLowerCase());
+    assert.equal(i, -1, `${n} reached an export: …${blob.slice(Math.max(0, i - 80), i + 80)}…`);
+  }
+});

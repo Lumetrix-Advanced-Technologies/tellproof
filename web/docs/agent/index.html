@@ -40,10 +40,12 @@
 
   <h2 id="local">Try it locally</h2>
   <p>Local mode needs no account, no server and no token. The agent signs each hourly batch with a key of its own and keeps it in its data directory; nothing is sent anywhere.</p>
-<pre><code>pip install tellproof-agent &amp;&amp; tellproof-agent run --local
-npx tellproof-agent run --local
+<pre><code>pip install "tellproof[agent]" &amp;&amp; tellproof start     # the SDK and the agent, in the background
+npm install tellproof &amp;&amp; npx tellproof start
+tellproof stop                                                  # status, restart and logs too
 docker run -d --name tellproof-agent -p 127.0.0.1:4318:4318 -p 127.0.0.1:4319:4319 \
   -v tellproof-agent:/data ghcr.io/lumetrix-advanced-technologies/tellproof-agent:latest run --local</code></pre>
+  <p>Or, in your app's directory, <code>tellproof-agent init</code>: it recognises a Python or Node.js project, shows the SDK line and the file it goes in, writes <code>tellproof.policy.json</code>, offers to keep the data directory out of git, and starts the agent in the background. It changes no source file. <code>tellproof</code> (installed with the SDK), <code>npx tellproof</code> and <code>tellproof-agent</code> are the same commands; <code>run --local</code> runs the agent in the foreground instead. Just looking? <code>tellproof-agent demo</code> serves the dashboard on a synthetic, signed week.</p>
   <p>Add the SDK to your app (<a href="#app">below</a>), make a model call, and about a minute later open the dashboard at <code>http://127.0.0.1:4319</code>: calls and tokens per model and region, guardrail coverage and personal-data redaction over time, tool use, a timeline of changes, anomalies and evaluations, and the evidence chain. The agent serves it on loopback only and it loads nothing from elsewhere. Set <code>TELLPROOF_DASHBOARD_LISTEN</code> (or <code>dashboard_listen</code>) to move it, or to <code>off</code>. The same figures in a terminal:</p>
 <pre><code>tellproof-agent report
 tellproof-agent report --json --since 2026-10-01</code></pre>
@@ -84,10 +86,10 @@ gh attestation verify tellproof-agent-linux-amd64 --repo lumetrix-advanced-techn
   <h3>From source</h3>
 <pre><code>go install github.com/lumetrix-advanced-technologies/tellproof/cmd/agent@latest</code></pre>
   <h3>pip or npm</h3>
-  <p><code>pip install tellproof-agent</code> or <code>npm install -g tellproof-agent</code> (or <code>npx tellproof-agent</code>) install the same static binary as the release for your platform. Nothing is downloaded at install time and nothing runs on install.</p>
+  <p><code>pip install "tellproof[agent]"</code> and <code>npm install tellproof</code> install the agent with the SDK; <code>pip install tellproof-agent</code> or <code>npm install -g tellproof-agent</code> (or <code>npx tellproof-agent</code>) install it on its own. Each is the same static binary as the release for your platform. Nothing is downloaded at install time and nothing runs on install.</p>
 
   <h2 id="app">Instrument your app</h2>
-  <p>Install the SDK (<code>pip install tellproof</code> or <code>npm install tellproof</code>) and add one line at start-up:</p>
+  <p>Install the SDK (<code>pip install "tellproof[agent]"</code> or <code>npm install tellproof</code>; in production, where the agent runs beside the app, <code>pip install tellproof</code> or <code>npm ci --omit=optional</code>) and add one line at start-up:</p>
 <pre><code>import tellproof; tellproof.init()                              # Python 3.10+
 import * as tellproof from 'tellproof'; tellproof.init();   // Node.js 18+</code></pre>
   <p>The SDK instruments the OpenAI, Anthropic and Bedrock client libraries that are installed. It records one span per model call (provider, model, region, token counts, operation, timing and error status) and never reads prompts, completions, arguments or return values. It has no dependencies, and it never blocks or breaks your app: if the agent is down, spans are dropped and counted.</p>
@@ -170,6 +172,7 @@ tellproof-agent run --config agent.json --dry-run --replay export.jsonl</code></
   </ul>
 
   <h2 id="trouble">Troubleshooting</h2>
+  <p>Start with <code>tellproof-agent doctor</code>. It checks the configuration, the data directory and its permissions, whether the agent answers on its ports (and whether something else holds them), where the SDKs will send, the evidence log's verification, the clock and the policy, and prints a fix for each problem. It sends no spans and contacts only the agent's own addresses.</p>
   <ul>
     <li><b>No agent on the system page:</b> check the agent's log for an enrolment error. An expired or used token needs a new one from the app. The same <code>connect</code> line works again once the data directory is enrolled.</li>
     <li><b>Agent listed, no batches:</b> check that your app reaches <code>TELLPROOF_AGENT_URL</code>, and run <code>--dry-run</code> to see what the agent is building.</li>

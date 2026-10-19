@@ -61,10 +61,15 @@ README = """# tellproof-agent
 
 The [Tellproof](__HOME__) evidence agent, installed with npm.
 
+Most people get it with the SDK, in one step: `npm install tellproof` brings this package as an optional dependency.
+
 ```bash
-npx tellproof-agent run --local      # no account or server; dashboard on http://127.0.0.1:4319
-npm install tellproof            # then: import * as tellproof from 'tellproof'; tellproof.init();
+npm install tellproof
+npx tellproof start      # in the background: no account or server; dashboard on http://127.0.0.1:4319
+npx tellproof stop
 ```
+
+Then `import * as tellproof from 'tellproof'; tellproof.init();` in your app. `npx tellproof-agent` runs the same commands.
 
 The agent keeps a signed, content-free hourly record of every model call: models and regions, tokens, guardrail
 decisions, personal-data redaction, agent tool use, prompt and model changes. It never reads a prompt or a completion.

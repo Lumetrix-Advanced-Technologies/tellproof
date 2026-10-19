@@ -336,6 +336,51 @@ class AgentEndToEndTest(unittest.TestCase):
         self.assertFalse(tellproof.is_enabled())
 
 
+class TransportTest(unittest.TestCase):
+    def test_never_follows_a_redirect_and_takes_http_only(self):
+        hits = []
+
+        class Target(BaseHTTPRequestHandler):
+            def do_POST(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        target = ThreadingHTTPServer(("127.0.0.1", 0), Target)
+
+        class Redirect(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                self.send_response(307)
+                self.send_header("Location", f"http://127.0.0.1:{target.server_address[1]}/v1/traces")
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        redirect = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+        for s in (target, redirect):
+            threading.Thread(target=s.serve_forever, daemon=True).start()
+        try:
+            with self.assertRaises(Exception) as ctx:
+                http_transport(f"http://127.0.0.1:{redirect.server_address[1]}/v1/traces")(b"{}")
+            if hasattr(ctx.exception, "close"):
+                ctx.exception.close()  # an HTTPError holds the 307 response
+            self.assertEqual(hits, [], "the spans followed a redirect")
+        finally:
+            for srv in (target, redirect):
+                srv.shutdown()
+                srv.server_close()
+        for u in ("file:///etc/passwd", "ftp://127.0.0.1/", "gopher://x/"):
+            with self.assertRaises(ValueError):
+                http_transport(u)
+        self.assertFalse(tellproof.init(agent_url="file:///tmp/x", instrument=False))
+        self.assertFalse(tellproof.is_enabled())
+
+
 if __name__ == "__main__":
     unittest.main()
 

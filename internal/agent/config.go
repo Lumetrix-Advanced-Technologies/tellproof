@@ -140,6 +140,18 @@ func (c Config) validate() error {
 			return errors.New("agent: server must use https (plain http is allowed only for localhost)")
 		}
 	}
+	if c.Langfuse.Enabled && c.Langfuse.BaseURL != "" {
+		// The puller sends the Langfuse keys: never over plain http to another host.
+		u, err := url.Parse(c.Langfuse.BaseURL)
+		if err != nil || u.Host == "" {
+			return fmt.Errorf("agent: langfuse.base_url %q is not a URL", c.Langfuse.BaseURL)
+		}
+		h := u.Hostname()
+		local := h == "localhost" || (net.ParseIP(h) != nil && net.ParseIP(h).IsLoopback())
+		if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+			return errors.New("agent: langfuse.base_url must use https (plain http is allowed only for localhost), since the Langfuse keys are sent to it")
+		}
+	}
 	host, _, err := net.SplitHostPort(c.OTLPListen)
 	if err != nil {
 		return fmt.Errorf("agent: otlp_listen %q: %w", c.OTLPListen, err)

@@ -167,3 +167,107 @@ class RealLibs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RealFrameworks(unittest.TestCase):
+    """Flask, FastAPI and Django, when installed: each request is its own
+    scope (D-069), so a @guardrail_check's decision reaches only its own
+    request's model call, and the handler's content never reaches a span."""
+
+    def setUp(self):
+        _instrument.install(requests=True)
+        self.cap = scenario.Capture()
+        old = _core.current_client()
+        _core.set_client(_core.Client(self.cap, service="test"))
+        self.addCleanup(_core.set_client, old)
+        saved = list(_core._checks)
+        self.addCleanup(lambda: _core._checks.__setitem__(slice(None), saved))
+        _core._checks.clear()
+
+        @_core.guardrail_check(canaries=False)
+        def check(text):
+            return "FLAG" in text
+        self.check = check
+
+    def handle(self, text):
+        self.check(text)
+        with _core.llm_call("acme", "m1") as c:
+            c.usage(1, 1)
+
+    def decisions(self):
+        llm = [s for s in self.cap.spans if s["kind"] == 3]
+        self.assertNotIn(MARK, json.dumps(self.cap.spans))
+        self.assertEqual(len({s["trace_id"] for s in llm}), len(llm))
+        return [s["attrs"].get(_core.GUARDRAIL) for s in llm]
+
+    @unittest.skipUnless(has("flask"), "flask not installed")
+    def test_flask(self):
+        import flask
+        app = flask.Flask("t")
+
+        @app.post("/c")
+        def c():
+            self.handle(flask.request.get_data(as_text=True))
+            return "ok"
+        @app.post("/stream")
+        def stream():
+            text = flask.request.get_data(as_text=True)
+
+            def body():  # the check and the call run while the response is sent
+                yield "a"
+                self.handle(text)
+                yield "b"
+            return flask.Response(flask.stream_with_context(body()))
+        client = app.test_client()
+        for path, body in (("/c", MARK), ("/c", "FLAG " + MARK), ("/stream", "FLAG")):
+            r = client.post(path, data=body)
+            self.assertEqual(r.status_code, 200)
+            r.get_data()  # read, as a server sends it: the request ends then
+        self.assertEqual(self.decisions(), ["allow", "block", "block"])
+        self.assertEqual(_core.current_client().stats.unscoped, 0)
+
+    @unittest.skipUnless(has("fastapi") and has("httpx"), "fastapi not installed")
+    def test_fastapi(self):
+        import fastapi
+        from fastapi.testclient import TestClient
+        app = fastapi.FastAPI()
+
+        @app.post("/sync")
+        def sync_route(body: dict):  # runs in a worker thread
+            self.handle(body["text"])
+            return {}
+
+        @app.post("/async")
+        async def async_route(body: dict):
+            self.handle(body["text"])
+            return {}
+        client = TestClient(app)
+        for path, text in (("/sync", MARK), ("/sync", "FLAG"), ("/async", MARK), ("/async", "FLAG " + MARK)):
+            self.assertEqual(client.post(path, json={"text": text}).status_code, 200)
+        self.assertEqual(self.decisions(), ["allow", "block", "allow", "block"])
+
+    @unittest.skipUnless(has("django"), "django not installed")
+    def test_django(self):
+        import django
+        from django.conf import settings
+        if not settings.configured:
+            settings.configure(DEBUG=True, SECRET_KEY="test", ALLOWED_HOSTS=["*"], ROOT_URLCONF=__name__,
+                               MIDDLEWARE=[], INSTALLED_APPS=[])
+            django.setup()
+        from django.test import Client
+        global urlpatterns
+        from django.http import HttpResponse
+        from django.urls import path, clear_url_caches
+
+        def view(request):
+            self.handle(request.body.decode())
+            return HttpResponse("ok")
+        urlpatterns = [path("c", view)]
+        clear_url_caches()
+        client = Client()
+        for body in ("FLAG", MARK):
+            self.assertEqual(client.post("/c", data=body, content_type="text/plain").status_code, 200)
+        self.assertEqual(self.decisions(), ["block", "allow"])
+
+
+urlpatterns: list = []

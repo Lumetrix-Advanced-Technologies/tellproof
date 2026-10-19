@@ -1,6 +1,6 @@
 {
   "name": "tellproof",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "One-line evidence telemetry for AI products: sends model-call facts (never content) to the local Tellproof agent.",
   "main": "./lib/index.cjs",
   "module": "./lib/index.mjs",
@@ -13,12 +13,14 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["lib", "README.md", "LICENSE"],
+  "bin": { "tellproof": "bin/tellproof.js" },
+  "files": ["lib", "bin", "README.md", "LICENSE"],
   "license": "Apache-2.0",
   "homepage": "https://lumetrix-advanced-technologies.github.io/tellproof/",
   "engines": { "node": ">=18" },
   "sideEffects": false,
   "dependencies": {},
-  "scripts": { "test": "node --test test/sdk.test.mjs test/instrument.test.mjs test/real-libs.test.mjs" },
+  "optionalDependencies": { "tellproof-agent": ">=0.5.0 <1" },
+  "scripts": { "test": "node --test test/sdk.test.mjs test/instrument.test.mjs test/real-libs.test.mjs test/cli.test.mjs test/simple.test.mjs" },
   "repository": { "type": "git", "url": "git+https://github.com/Lumetrix-Advanced-Technologies/tellproof.git", "directory": "sdk/js" }
 }

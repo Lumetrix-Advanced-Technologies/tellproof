@@ -26,8 +26,9 @@ jobs:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: "22" }
       - name: Download the release's binaries and check them
         run: |
@@ -59,14 +60,14 @@ jobs:
           npm install --no-audit --no-fund "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-linux-x64-*.tgz "$GITHUB_WORKSPACE"/pkg/tarballs/tellproof-agent-[0-9]*.tgz > /dev/null
           npx --no-install tellproof-agent version | grep -qx "tellproof-agent v$v"
           echo "pip and npm packages install and run: tellproof-agent v$v"
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
             pkg/pypi/*.whl
             pkg/tarballs/*.tgz
       - name: Attach them to the release
         run: gh release upload "$TAG" pkg/pypi/*.whl pkg/tarballs/*.tgz -R "$GITHUB_REPOSITORY" --clobber
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: packages, path: pkg, if-no-files-found: error }
 
   pypi:
@@ -78,9 +79,9 @@ jobs:
     environment: release
     permissions: { id-token: write }
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: packages, path: pkg }
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with: { packages-dir: pkg/pypi, skip-existing: true }
 
   npm:
@@ -96,10 +97,10 @@ jobs:
     environment: release
     permissions: { contents: read, id-token: write }
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
       - run: npm install -g "npm@>=11.15.0 <13" && npm --version   # npm stage needs npm 11.15.0+
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: packages, path: pkg }
       - name: Stage for approval on npmjs.com
         run: |

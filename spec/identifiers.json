@@ -1,0 +1,18 @@
+{
+  "version": "1",
+  "note": "The values the agent copies into a batch from a span, the provider, model, region and prompt version, are identifiers, not text. A value that does not look like one (wrong characters, too long) or that looks like a credential is replaced by \"invalid\" before aggregation, so a prompt, personal data or a key put in the wrong attribute never reaches a batch (D-065). The pattern is the one tellproof.policy.json uses for declared models, so every value a batch can carry can be declared. Both the agent (internal/otlp) and the concierge (concierge/ingest.py) apply this file; spec/leak-corpus.json holds the examples both must classify the same way.",
+  "fields": ["provider", "model", "region", "prompt_version"],
+  "pattern": "^[A-Za-z0-9._:/@+-]{1,128}$",
+  "credential_patterns": [
+    "^(AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA|AIPA)[A-Z0-9]{12,}$",
+    "^sk-",
+    "^(sk|rk|pk)_(live|test)_",
+    "^(ghp|gho|ghu|ghs|ghr)_",
+    "^github_pat_",
+    "^xox[abeoprs]-",
+    "^AIza[0-9A-Za-z_-]{20,}$",
+    "^glpat-",
+    "^eyJ[A-Za-z0-9_-]*\\."
+  ],
+  "replacement": "invalid"
+}

@@ -15,7 +15,9 @@ MARKER = "CONTENT-MARKER"
 
 
 class APIError(Exception):
-    pass
+    def __init__(self, message="", code=None):
+        super().__init__(message)
+        self.code = code
 
 
 class Stream:
@@ -106,14 +108,28 @@ class _Resource:
         self._client = client
 
 
+def _azure(client, result, model):
+    """Azure OpenAI adds its content filter's results to every response."""
+    if "Azure" not in type(client).__name__:
+        return result
+    result.prompt_filter_results = [NS(prompt_index=0, content_filter_results=NS(hate=NS(filtered=False, severity="safe")))]
+    for c in result.choices:
+        c.content_filter_results = NS(hate=NS(filtered=model == "filtered", severity="high" if model == "filtered" else "safe"))
+        if model == "filtered":
+            c.finish_reason = "content_filter"
+    return result
+
+
 def make_openai(marker=MARKER):
     class Completions(_Resource):
         def create(self, *, model, messages, stream=False, stream_options=None, **kw):
             if model == "boom":
                 raise APIError(f"invalid request: {marker}")
+            if model == "refused":  # Azure: the prompt was stopped by the content filter
+                raise APIError(f"The response was filtered: {marker}", code="content_filter")
             if stream:
                 return Stream(_chat_chunks(model, marker, bool(stream_options and stream_options.get("include_usage"))))
-            return _chat_completion(model, marker)
+            return _azure(self._client, _chat_completion(model, marker), model)
 
         def parse(self, *, model, messages, **kw):
             return _chat_completion(model, marker)
@@ -153,6 +169,16 @@ def make_openai(marker=MARKER):
         async def create(self, *, model, input, **kw):
             return NS(object="list", model=model, data=[], usage=NS(prompt_tokens=9, total_tokens=9))
 
+    class Moderations(_Resource):
+        def create(self, *, input, model="omni-moderation-latest", **kw):
+            flagged = "FLAG" in str(input)
+            return NS(id="modr-1", model=model, results=[NS(flagged=flagged, categories=NS(violence=flagged),
+                                                            category_scores=NS(violence=0.9 if flagged else 0.01))])
+
+    class AsyncModerations(_Resource):
+        async def create(self, *, input, model="omni-moderation-latest", **kw):
+            return Moderations(self._client).create(input=input, model=model)
+
     class LegacyCompletions(_Resource):
         def create(self, *, model, prompt, **kw):
             return NS(model=model, choices=[NS(text=marker)], usage=NS(prompt_tokens=4, completion_tokens=2))
@@ -164,6 +190,7 @@ def make_openai(marker=MARKER):
             self.responses = Responses(self)
             self.embeddings = Embeddings(self)
             self.completions = LegacyCompletions(self)
+            self.moderations = Moderations(self)
 
     class AsyncOpenAI(OpenAI):
         def __init__(self, base_url="https://api.openai.com/v1/"):
@@ -171,6 +198,7 @@ def make_openai(marker=MARKER):
             self.chat = NS(completions=AsyncCompletions(self))
             self.responses = AsyncResponses(self)
             self.embeddings = AsyncEmbeddings(self)
+            self.moderations = AsyncModerations(self)
 
     class AzureOpenAI(OpenAI):
         def __init__(self):
@@ -188,6 +216,8 @@ def make_openai(marker=MARKER):
         "openai.resources.embeddings": _module("openai.resources.embeddings", Embeddings=Embeddings,
                                                AsyncEmbeddings=AsyncEmbeddings),
         "openai.resources.completions": _module("openai.resources.completions", Completions=LegacyCompletions),
+        "openai.resources.moderations": _module("openai.resources.moderations", Moderations=Moderations,
+                                                AsyncModerations=AsyncModerations),
     }
     return mods
 
@@ -385,6 +415,9 @@ def make_botocore(marker=MARKER):
             if operation_name == "InvokeModelWithResponseStream":
                 return {"body": EventStream([{"chunk": {"bytes": marker.encode()}}]),
                         "ResponseMetadata": {"HTTPStatusCode": 200, "HTTPHeaders": {}}}
+            if operation_name == "ApplyGuardrail":
+                return {"usage": {"topicPolicyUnits": 1}, "action": "GUARDRAIL_INTERVENED" if api_params.get("_intervene") else "NONE",
+                        "outputs": [{"text": marker}], "assessments": [{"topicPolicy": {"topics": [{"name": marker}]}}]}
             return {"Contents": [{"Key": marker}]}  # another service, another operation
 
         # boto3's generated methods call _make_api_call with the operation name.
@@ -399,6 +432,9 @@ def make_botocore(marker=MARKER):
 
         def invoke_model_with_response_stream(self, **kw):
             return self._make_api_call("InvokeModelWithResponseStream", kw)
+
+        def apply_guardrail(self, **kw):
+            return self._make_api_call("ApplyGuardrail", kw)
 
         def list_objects_v2(self, **kw):
             return self._make_api_call("ListObjectsV2", kw)

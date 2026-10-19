@@ -12,6 +12,7 @@ design partner with --attributes (D-020).
 import datetime as dt
 import hashlib
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -50,6 +51,29 @@ def load_attributes(path: str | None) -> dict:
 
 def load_semconv() -> dict:
     return json.loads((SPEC / "semconv-map.json").read_text())
+
+
+def load_identifiers() -> dict:
+    """spec/identifiers.json (D-065), with its patterns compiled."""
+    rules = json.loads((SPEC / "identifiers.json").read_text())
+    rules["_pattern"] = re.compile(rules["pattern"])
+    rules["_credentials"] = [re.compile(p) for p in rules["credential_patterns"]]
+    return rules
+
+
+IDENTIFIERS = load_identifiers()
+
+
+def is_identifier(s: str) -> bool:
+    return bool(IDENTIFIERS["_pattern"].fullmatch(s)) and not any(p.match(s) for p in IDENTIFIERS["_credentials"])
+
+
+def identifier(v) -> str:
+    """v as a batch may carry it: an identifier, "invalid" (content or a credential in the wrong place), or "" when absent."""
+    s = "" if v is None else str(v)
+    if s == "" or is_identifier(s):
+        return s
+    return IDENTIFIERS["replacement"]
 
 
 class Span:
@@ -91,6 +115,11 @@ def canary_kind(v) -> str:
     return s
 
 
+def _clean_version(v):
+    """A string prompt version is an identifier or "invalid"; anything else is kept as it was."""
+    return identifier(v) if isinstance(v, str) and v else v
+
+
 def _pick(values: dict, names: list[str]):
     for n in names:
         if n in values and values[n] not in (None, ""):
@@ -111,20 +140,20 @@ def _span_from_values(trace_id, start, operation, values, presence_keys, error, 
     ck = _pick(values, f["canary_kind"])
     return Span(
         trace_id=trace_id, start=start, kind=kind, operation=str(operation or ""),
-        provider=str(_pick(values, f["provider"]) or "unknown"),
-        model=str(model or "unknown"),
-        region=str(_pick(values, f["region"]) or "unknown"),
+        provider=identifier(_pick(values, f["provider"])) or "unknown",
+        model=identifier(model) or "unknown",
+        region=identifier(_pick(values, f["region"])) or "unknown",
         input_tokens=int(_pick(values, f["input_tokens"]) or 0),
         output_tokens=int(_pick(values, f["output_tokens"]) or 0),
         error=bool(error), content_present=content,
         pii=values.get(attrs["pii_marker"]) in attrs["pii_values"],
         redacted=_truthy(values.get(attrs["redacted"])),
         guardrail=(str(values[attrs["guardrail_decision"]]) if values.get(attrs["guardrail_decision"]) not in (None, "") else None),
-        prompt_name=values.get(attrs["prompt_name"]), prompt_version=values.get(attrs["prompt_version"]),
+        prompt_name=values.get(attrs["prompt_name"]), prompt_version=_clean_version(values.get(attrs["prompt_version"])),
         slot=values.get(attrs["slot"]) or values.get("service.name"),
         high_impact=_truthy(values.get(attrs["high_impact"])), approved=_truthy(values.get(attrs["approved"])),
         escalation=_truthy(values.get(attrs["escalation"])),
-        canary_kind=None if ck is None else canary_kind(ck),
+        canary_kind=None if ck is None else canary_kind(ck if not isinstance(ck, str) or is_identifier(ck) else ""),
         canary_caught=_truthy(_pick(values, f["canary_caught"])),
     )
 

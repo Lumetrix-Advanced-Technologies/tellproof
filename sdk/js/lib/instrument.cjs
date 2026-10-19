@@ -55,6 +55,7 @@ class Call {
     this.inputTokens = null;
     this.outputTokens = null;
     this.guardrail = null;
+    this.prompt = null; // a stored prompt's [id, version] (OpenAI Responses)
     this.error = false;
     this.done = false;
   }
@@ -70,6 +71,10 @@ class Call {
       if (this.inputTokens !== null) a[A.INPUT_TOKENS] = this.inputTokens;
       if (this.outputTokens !== null) a[A.OUTPUT_TOKENS] = this.outputTokens;
       if (this.guardrail) a[A.GUARDRAIL] = this.guardrail;
+      if (this.prompt) {
+        a[A.PROMPT_NAME] = this.prompt[0];
+        if (this.prompt[1]) a[A.PROMPT_VERSION] = this.prompt[1];
+      }
       core.record(this.operation, core.KIND_CLIENT, this.start, core.currentClient().clock(), a, error || this.error, {
         llm: true,
         spanId: this.spanId,
@@ -167,16 +172,38 @@ function observeResult(p, call, done) {
   };
   if (p !== null && typeof p === 'object' && typeof p._thenUnwrap === 'function') {
     const rp = get(p, 'responsePromise');
-    if (rp && typeof rp.then === 'function') rp.then(undefined, () => call.finish(true));
+    if (rp && typeof rp.then === 'function')
+      rp.then(undefined, (e) => {
+        safe(refused, call, e);
+        call.finish(true);
+      });
     return p._thenUnwrap((data) => finishWith(data));
   }
   if (p !== null && typeof p === 'object' && typeof p.then === 'function') {
     return p.then(finishWith, (e) => {
+      safe(refused, call, e);
       call.finish(true);
       throw e;
     });
   }
   return finishWith(p);
+}
+
+// Azure OpenAI refuses a prompt its content filter stops with the error code
+// content_filter: a guardrail block. Only the code is read.
+function refused(call, err) {
+  if (call.provider === 'azure.ai.openai' && err && err.code === 'content_filter') call.guardrail = 'block';
+}
+
+// Observe a result that is not a model call, keeping a Stainless APIPromise one.
+function observeOnly(p, after) {
+  const note = (v) => {
+    if (core.currentClient().enabled) safe(after, v);
+    return v;
+  };
+  if (p !== null && typeof p === 'object' && typeof p._thenUnwrap === 'function') return p._thenUnwrap(note);
+  if (p !== null && typeof p === 'object' && typeof p.then === 'function') return p.then(note);
+  return note(p);
 }
 
 function patch(owner, name, make) {
@@ -266,6 +293,26 @@ function openaiObserve(call, item) {
   const m = get(item, 'model');
   if (typeof m === 'string') call.responseModel = m;
   openaiUsage(call, get(item, 'usage'));
+  azureFilter(call, item);
+}
+
+// Azure OpenAI's content filter ran when a response carries its results: the
+// call was guarded, and blocked when a choice ended on content_filter. Only
+// the presence of the results and the finish reasons are read.
+function azureFilter(call, data) {
+  if (call.provider !== 'azure.ai.openai') return;
+  const choices = get(data, 'choices');
+  if (!Array.isArray(choices)) return;
+  const ran = get(data, 'prompt_filter_results') != null || choices.some((c) => get(c, 'content_filter_results') != null);
+  if (choices.some((c) => get(c, 'finish_reason') === 'content_filter')) call.guardrail = 'block';
+  else if (ran && call.guardrail === null) call.guardrail = 'allow';
+}
+
+// An OpenAI moderation check is a guardrail: flagged or not, for the request's
+// model calls. Only the flagged booleans are read.
+function moderationDone(data) {
+  const results = get(data, 'results');
+  if (Array.isArray(results) && results.length) core.decide(results.some((r) => get(r, 'flagged') === true) ? 'flag' : 'allow');
 }
 
 function openaiDone(call, data) {
@@ -273,15 +320,23 @@ function openaiDone(call, data) {
   const m = get(data, 'model');
   if (typeof m === 'string') call.responseModel = m;
   openaiUsage(call, get(data, 'usage'));
+  azureFilter(call, data);
   if (get(data, 'status') === 'failed') call.error = true;
   call.finish();
   return data;
 }
 
-function openaiStart(operation) {
+function openaiStart(operation, responses = false) {
   return (self, args) => {
     const body = args[0] || {};
-    return new Call(openaiProvider(self), get(body, 'model'), operation);
+    const call = new Call(openaiProvider(self), get(body, 'model'), operation);
+    const ref = responses ? get(body, 'prompt') : null;
+    if (ref && typeof ref === 'object') {
+      // A stored prompt is named by reference: its ID and version, never its text or variables.
+      const id = core.clean(get(ref, 'id'));
+      if (id) call.prompt = [id, core.clean(get(ref, 'version'))];
+    }
+    return call;
   };
 }
 
@@ -298,18 +353,25 @@ function instrumentOpenAI(mod) {
   if (!OpenAI || typeof OpenAI !== 'function') return false;
   const targets = [
     // parse() and the stream() helpers call create(), so create() is the one place to patch.
-    [OpenAI.Chat && OpenAI.Chat.Completions, ['create'], 'chat', chatRewrite],
-    [OpenAI.Responses, ['create'], 'chat', null],
-    [OpenAI.Embeddings, ['create'], 'embeddings', null],
-    [OpenAI.Completions, ['create'], 'text_completion', null],
+    [OpenAI.Chat && OpenAI.Chat.Completions, ['create'], 'chat', chatRewrite, false],
+    [OpenAI.Responses, ['create'], 'chat', null, true],
+    [OpenAI.Embeddings, ['create'], 'embeddings', null, false],
+    [OpenAI.Completions, ['create'], 'text_completion', null, false],
   ];
   let any = false;
-  for (const [cls, methods, op, rewrite] of targets) {
+  for (const [cls, methods, op, rewrite, responses] of targets) {
     if (!cls || !cls.prototype) continue;
     for (const m of methods) {
-      patch(cls.prototype, m, (orig) => wrapCall(orig, openaiStart(op), openaiDone, rewrite));
+      patch(cls.prototype, m, (orig) => wrapCall(orig, openaiStart(op, responses), openaiDone, rewrite));
       any = true;
     }
+  }
+  if (OpenAI.Moderations && OpenAI.Moderations.prototype) {
+    patch(OpenAI.Moderations.prototype, 'create', (orig) =>
+      function create(...args) {
+        return observeOnly(orig.apply(this, args), moderationDone);
+      },
+    );
   }
   return any;
 }
@@ -422,8 +484,17 @@ function headerMiddleware(call) {
   };
 }
 
+// Bedrock's ApplyGuardrail is a guardrail check: blocked when it intervened.
+// Only the action is read.
+function applyGuardrailDone(out) {
+  const action = get(out, 'action');
+  if (typeof action === 'string') core.decide(action === 'GUARDRAIL_INTERVENED' ? 'block' : 'allow');
+}
+
 function wrapSend(orig, mod) {
   return function send(command, ...rest) {
+    if (core.currentClient().enabled && mod.ApplyGuardrailCommand && command instanceof mod.ApplyGuardrailCommand && !rest.some((x) => typeof x === 'function'))
+      return observeOnly(orig.call(this, command, ...rest), applyGuardrailDone);
     const kind = core.currentClient().enabled ? bedrockKind(command, mod) : null;
     if (kind === null || rest.some((x) => typeof x === 'function')) return orig.call(this, command, ...rest); // callback style: untouched
     let call;
@@ -532,14 +603,56 @@ function esmEntry(spec, req) {
   return null;
 }
 
+// --- Node.js HTTP servers: one trace (request) per request ----------------------
+
+// Every framework on node:http or node:https (Express, Fastify, Koa, Next.js,
+// Nest...) receives requests through Server#emit('request'): run its
+// listeners inside a request scope that ends when the response closes.
+function instrumentServers() {
+  let any = false;
+  for (const name of ['node:http', 'node:https']) {
+    let mod;
+    try {
+      mod = require(name);
+    } catch {
+      continue;
+    }
+    if (!mod.Server || !mod.Server.prototype) continue;
+    patch(mod.Server.prototype, 'emit', (orig) =>
+      function emit(event, req, res) {
+        if (event !== 'request' || !core.currentClient().enabled || !res || typeof res.once !== 'function') return orig.apply(this, arguments);
+        let scope = null;
+        try {
+          scope = core.requestScope();
+          res.once('close', scope.leave);
+        } catch (e) {
+          core.fail('request', e);
+          return orig.apply(this, arguments);
+        }
+        const args = arguments;
+        return core.runIn(scope.frame, () => orig.apply(this, args));
+      },
+    );
+    any = true;
+  }
+  return any;
+}
+
 let ready = Promise.resolve([]);
 
 // Patch every installed library: the CommonJS copies now, the ES module copies
 // as soon as they load. Returns the names patched so far; ready() resolves
 // with the full list.
-function install({ streamUsage: su = false } = {}) {
+function install({ streamUsage: su = false, requests = false } = {}) {
   streamUsage = !!su;
   const done = new Set();
+  if (requests) {
+    try {
+      if (instrumentServers()) done.add('http');
+    } catch (e) {
+      core.fail('instrument http', e);
+    }
+  }
   const esm = [];
   for (const [name, spec, fn] of LIBS) {
     for (const req of requirers()) {
@@ -595,6 +708,7 @@ module.exports = {
   },
   Call,
   esmEntry,
+  instrumentServers,
   instrumentOpenAI,
   instrumentAnthropic,
   instrumentBedrock,

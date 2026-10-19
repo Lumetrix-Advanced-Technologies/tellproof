@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import urllib.parse
 import urllib.request
 from typing import Callable
 
@@ -17,7 +18,11 @@ Transport = Callable[[bytes], None]
 
 def http_transport(url: str, timeout: float = 3.0) -> Transport:
     """POST to the agent. Proxies are never used: the agent is local, and
-    trace IDs must not travel through a corporate proxy."""
+    trace IDs must not travel through a corporate proxy. Only http and https
+    URLs (anything else leaves the SDK off), and a redirect is never followed
+    with the body: urllib refuses to re-POST on 307 and 308."""
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+        raise ValueError("the agent URL must be http:// or https://")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def send(body: bytes) -> None:

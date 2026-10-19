@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -65,6 +66,8 @@ func TestConfigRefusals(t *testing.T) {
 		"listen on all hosts": {`{"otlp_listen":"0.0.0.0:4318"}`, "loopback"},
 		"grace out of range":  {`{"aggregation":{"grace_minutes":90}}`, "grace_minutes"},
 		"trailing data":       {`{} {}`, "unexpected data"},
+		"plain http langfuse": {`{"langfuse":{"enabled":true,"base_url":"http://langfuse.example"}}`, "https"},
+		"langfuse not a URL":  {`{"langfuse":{"enabled":true,"base_url":"langfuse.example"}}`, "not a URL"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := LoadConfig(write(c.json), env()); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -74,6 +77,9 @@ func TestConfigRefusals(t *testing.T) {
 	}
 	if _, err := LoadConfig(write(`{"otlp_listen":"0.0.0.0:4318","otlp_allow_remote":true}`), env()); err != nil {
 		t.Errorf("remote listen with otlp_allow_remote: %v", err)
+	}
+	if _, err := LoadConfig(write(`{"langfuse":{"enabled":true,"base_url":"http://127.0.0.1:3000"}}`), env()); err != nil {
+		t.Errorf("http langfuse on localhost: %v", err)
 	}
 	if _, err := LoadConfig(write(`{"server":"http://localhost:8080"}`), env()); err != nil {
 		t.Errorf("http to localhost: %v", err)
@@ -359,5 +365,57 @@ func TestDefaultDataDirKeepsTheLegacyDirectory(t *testing.T) {
 	_ = os.Mkdir(".tellproof-agent", 0o700)
 	if got := DefaultDataDir(); got != "./.tellproof-agent" {
 		t.Errorf("both: %s", got)
+	}
+}
+
+// A receiver on loopback answers only under local host names, so a web page
+// that rebinds its domain to 127.0.0.1 cannot post spans into the evidence;
+// with otlp_allow_remote (containers, sidecars) any Host is accepted.
+func TestReceiverRefusesNonLocalHostsOnLoopback(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	h := LocalHostOnly(ok)
+	for host, want := range map[string]int{
+		"127.0.0.1:4318": 204, "localhost:4318": 204, "LOCALHOST": 204, "app.localhost:4318": 204, "[::1]:4318": 204, "127.0.1.1:4318": 204,
+		"evil.example:4318": 403, "attacker.com": 403, "192.168.1.5:4318": 403, "localhost.evil.example": 403, "": 403,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/traces", strings.NewReader("{}"))
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q: %d, want %d", host, rec.Code, want)
+		}
+	}
+
+	// Run wires it in, and leaves it out with otlp_allow_remote.
+	for _, remote := range []bool{false, true} {
+		c, _ := LoadConfig("", env())
+		c.DataDir, c.OTLPAllowRemote = t.TempDir(), remote
+		ln, _ := net.Listen("tcp", "127.0.0.1:0")
+		c.OTLPListen = ln.Addr().String()
+		ln.Close()
+		a, err := New(c, Options{Local: true, Log: quiet(), Getenv: env("TELLPROOF_SALT_SECRET", "a-salt-secret-0123456")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		listening := make(chan struct{})
+		a.OnListening(func() { close(listening) })
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- a.Run(ctx) }()
+		<-listening
+		req, _ := http.NewRequest(http.MethodPost, "http://"+c.OTLPListen+"/v1/traces", strings.NewReader(`{"resourceSpans":[]}`))
+		req.Host = "rebound.example:4318"
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if want := map[bool]int{false: 403, true: 200}[remote]; resp.StatusCode != want {
+			t.Errorf("allow_remote=%v: a foreign Host got %d, want %d", remote, resp.StatusCode, want)
+		}
+		cancel()
+		<-done
 	}
 }

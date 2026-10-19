@@ -11,6 +11,12 @@ import _ "embed"
 //go:embed semconv-map.json
 var SemconvMap string
 
+// Identifiers is spec/identifiers.json: what a provider, model, region or
+// prompt version copied into a batch may look like (D-065).
+//
+//go:embed identifiers.json
+var Identifiers string
+
 // Objectives is spec/objectives.json: the eleven evidence objectives and rules.
 //
 //go:embed objectives.json

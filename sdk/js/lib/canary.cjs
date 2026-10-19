@@ -109,4 +109,33 @@ function scheduleCanaries(check, { every = 3_600_000, kinds } = {}) {
   };
 }
 
-module.exports = { PROBES, canary, runCanaries, scheduleCanaries, CANARY_KIND, CANARY_CAUGHT };
+// Canaries through the checks wrapped with guardrailCheck() (D-069): on while
+// init() says so, from each check's first call, with the `this` that call
+// used, then every `every` milliseconds on an unref'd timer.
+const auto = { every: null, checks: new Map() };
+
+function ensure(check, target) {
+  if (auto.every === null) return;
+  let st = auto.checks.get(check);
+  if (!st) {
+    st = { target, schedule: null };
+    auto.checks.set(check, st);
+  }
+  st.target = target;
+  if (!st.schedule) st.schedule = scheduleCanaries((text) => st.target(text), { every: auto.every });
+}
+
+function startAuto(every) {
+  stopAuto();
+  auto.every = every;
+  core.hooks.ensureCanaries = ensure;
+}
+
+function stopAuto() {
+  core.hooks.ensureCanaries = null;
+  auto.every = null;
+  for (const st of auto.checks.values()) if (st.schedule) st.schedule.stop();
+  auto.checks = new Map();
+}
+
+module.exports = { PROBES, canary, runCanaries, scheduleCanaries, startAuto, stopAuto, CANARY_KIND, CANARY_CAUGHT };

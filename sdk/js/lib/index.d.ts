@@ -10,6 +10,17 @@ export interface InitOptions {
   /** service.name. Default TELLPROOF_SERVICE or OTEL_SERVICE_NAME. */
   service?: string;
   environment?: string;
+  /** The agent name every model call carries unless agentRun() says otherwise. Default TELLPROOF_AGENT_NAME. */
+  agent?: string;
+  /** The prompt name and version every model call carries unless prompt() says otherwise. Default TELLPROOF_PROMPT, TELLPROOF_PROMPT_VERSION. */
+  prompt?: string;
+  promptVersion?: string | number;
+  /** Every model call handles personal data; redacted when a redactor() ran in its request. Default TELLPROOF_PERSONAL_DATA. */
+  personalData?: boolean;
+  /** One trace per request to a Node.js HTTP server (Express, Fastify, Next.js, Koa...). Default true. */
+  requests?: boolean;
+  /** Canaries through each guardrailCheck(): false, or the interval in ms. Default hourly. */
+  canaries?: boolean | number;
   /** Instrument the installed LLM clients (default true). */
   instrument?: boolean;
   /** Ask OpenAI for usage on streamed chat completions (adds one final chunk with no choices). Default false. */
@@ -26,6 +37,8 @@ export interface Stats {
   exported: number;
   dropped: number;
   exportErrors: number;
+  /** Guardrail decisions and redactions made outside any request, so not recorded: wrap that work in trace(). */
+  unscoped: number;
   instrumented: string[];
 }
 
@@ -42,8 +55,19 @@ export declare function ready(): Promise<string[]>;
 /** Instrument client libraries the SDK cannot find itself (bundlers, strict package managers). Pass the module or class you import. */
 export declare function instrument(libs: { openai?: unknown; anthropic?: unknown; bedrock?: unknown }): string[];
 
-/** Group everything inside into one trace (for example one web request). */
+/** Group everything inside into one trace and request (a job, a queue message). HTTP requests get one automatically. */
 export declare function trace<T>(fn: () => T): T;
+
+/**
+ * Wrap the app's own guardrail check (a function of the text that returns true, "block" or "flag" when it would
+ * stop it). Each call's decision counts for the current request's model calls; unless canaries is false, the SDK
+ * also sends it the canary probes hourly. Its argument and result are never recorded.
+ */
+export declare function guardrailCheck<F extends (...args: any[]) => any>(fn: F, options?: { canaries?: boolean }): F;
+/** Wrap the app's own redaction function: once it returns, the request's model calls count as personal data, redacted. */
+export declare function redactor<F extends (...args: any[]) => any>(fn: F): F;
+/** The tool call in progress was approved by a person or a policy. */
+export declare function approve(): void;
 /** Calls inside use this prompt (name and version, never its text). */
 export declare function prompt<T>(name: string, version: string | number | undefined, fn: () => T): T;
 export declare function prompt<T>(name: string, fn: () => T): T;
@@ -76,6 +100,8 @@ export interface Tool {
 /** A tool call. highImpact: real-world effect; approved: a person or policy approved it. */
 export declare function tool<T>(name: string, options: { highImpact?: boolean; approved?: boolean }, fn: (t: Tool) => T): T;
 export declare function tool<T>(name: string, fn: (t: Tool) => T): T;
+/** A function that is a tool call each time it runs, named after the function. */
+export declare function tool<F extends (...args: any[]) => any>(fn: F, options?: { highImpact?: boolean; approved?: boolean }): F;
 
 export interface AgentRun {
   readonly name: string | null;
@@ -83,6 +109,8 @@ export interface AgentRun {
 }
 /** One run of an agent; model changes are tracked per agent. */
 export declare function agentRun<T>(name: string, fn: (run: AgentRun) => T): T;
+/** A function that is an agent run each time it runs, named after the function. */
+export declare function agentRun<F extends (...args: any[]) => any>(fn: F): F;
 
 export interface LLMCall {
   responseModel: string | null;
@@ -126,6 +154,9 @@ declare const sdk: {
   stats: typeof stats;
   ready: typeof ready;
   instrument: typeof instrument;
+  guardrailCheck: typeof guardrailCheck;
+  redactor: typeof redactor;
+  approve: typeof approve;
   trace: typeof trace;
   prompt: typeof prompt;
   personalData: typeof personalData;

@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 const tellproof = require('../lib/index.cjs');
 const core = require('../lib/core.cjs');
 const otlp = require('../lib/otlp.cjs');
-const { Exporter } = require('../lib/export.cjs');
+const { Exporter, httpTransport } = require('../lib/export.cjs');
 
 // Run fn (sync or async) with a client that keeps spans in memory.
 async function spansOf(fn) {
@@ -405,4 +405,29 @@ test('canaries do not call the guardrail when the SDK is off; schedules unref an
   });
   assert.equal(ran, 1);
   assert.equal(spans.length, 1);
+});
+
+test('the transport never follows a redirect, ignores the answer body, and takes http(s) only', async () => {
+  const hits = { target: 0 };
+  const target = createServer((req, res) => { hits.target++; res.end('{}'); });
+  await new Promise((r) => target.listen(0, '127.0.0.1', r));
+  const redirector = createServer((req, res) => {
+    req.resume();
+    res.writeHead(307, { Location: `http://127.0.0.1:${target.address().port}/v1/traces` }).end();
+  });
+  await new Promise((r) => redirector.listen(0, '127.0.0.1', r));
+  const big = createServer((req, res) => { req.resume(); res.end('x'.repeat(8 << 20)); });
+  await new Promise((r) => big.listen(0, '127.0.0.1', r));
+  try {
+    await assert.rejects(httpTransport(`http://127.0.0.1:${redirector.address().port}/v1/traces`)('{}'));
+    assert.equal(hits.target, 0, 'the spans followed a redirect');
+    await httpTransport(`http://127.0.0.1:${big.address().port}/v1/traces`)('{}');
+  } finally {
+    target.close(); redirector.close(); big.close();
+  }
+  for (const u of ['file:///etc/passwd', 'ftp://127.0.0.1/', 'javascript:alert(1)']) {
+    assert.throws(() => httpTransport(u), /http/);
+  }
+  assert.equal(tellproof.init({ agentUrl: 'file:///tmp/x', instrument: false }), false);
+  assert.equal(tellproof.isEnabled(), false);
 });

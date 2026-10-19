@@ -311,18 +311,22 @@ func welcome(w io.Writer, getenv func(string) string) bool {
 func welcomeText(p palette, width int) string {
 	var b strings.Builder
 	b.WriteString("\n" + renderBanner(p, width, version, "Evidence agent") + "\n")
+	n := progName()
 	cmds := [][2]string{
-		{"tellproof-agent run --local", "a signed local log and a dashboard"},
-		{"tellproof-agent report", "verify the log and summarise it"},
-		{"tellproof-agent check", "evaluate it against tellproof.policy.json"},
-		{"tellproof-agent --help", "every command and option"},
+		{n + " init", "set up the app in this directory"},
+		{n + " start", "run in the background, with a dashboard"},
+		{n + " stop", "stop it; status: is it running, and where"},
+		{n + " demo", "the dashboard on a synthetic week"},
+		{n + " doctor", "diagnose the setup, with a fix for each"},
+		{n + " check", "evaluate it against tellproof.policy.json"},
+		{n + " --help", "every command and option"},
 	}
 	b.WriteString("  " + p.bold("Get started") + "\n")
 	for _, c := range cmds {
 		fmt.Fprintf(&b, "    %s  %s\n", pad(p.fg(colLetter, c[0]), 30), p.fg(colMuted, c[1]))
 	}
 	b.WriteString("\n  Then add " + p.fg(colLetter, "tellproof.init()") + " to your app:\n")
-	b.WriteString("    " + p.fg(colLetter, "pip install tellproof") + "   or   " + p.fg(colLetter, "npm install tellproof") + "\n")
+	b.WriteString("    " + p.fg(colLetter, `pip install "tellproof[agent]"`) + "   or   " + p.fg(colLetter, "npm install tellproof") + "\n")
 	b.WriteString("  Docs: " + p.fg(colLetter, "https://lumetrix-advanced-technologies.github.io/tellproof/") + "\n\n")
 	return b.String()
 }
@@ -343,6 +347,6 @@ func localStatus(w io.Writer, getenv func(string) string, agentID, otlp, dashboa
 	}
 	row("Evidence", logDir, "signed by this agent, never sent")
 	row("Agent", agentID, version)
-	fmt.Fprintln(w, "\n  "+p.fg(colMuted, "In another terminal: tellproof-agent report  ·  Ctrl-C to stop"))
+	fmt.Fprintln(w, "\n  "+p.fg(colMuted, "In another terminal: "+progName()+" report  ·  Ctrl-C or "+progName()+" stop to stop"))
 	fmt.Fprintln(w)
 }

@@ -25,15 +25,17 @@ inputs:
     description: "check: write JUnit XML here, for test reporters"
     default: tellproof-check.xml
   version:
-    description: The tellproof-agent version from PyPI (default the latest).
-    default: ""
+    description: The tellproof-agent version from PyPI. The default is the release this Action belongs to, so pinning the Action pins the agent; "latest" takes the newest.
+    default: "0.5.0"
 runs:
   using: composite
   steps:
     - name: Install tellproof-agent
       shell: bash
       env: { VERSION: "${{ inputs.version }}" }
-      run: python3 -m pip install --disable-pip-version-check --quiet "tellproof-agent${VERSION:+==$VERSION}"
+      run: |
+        if [ "$VERSION" = latest ] || [ -z "$VERSION" ]; then spec=tellproof-agent; else spec="tellproof-agent==$VERSION"; fi
+        python3 -m pip install --disable-pip-version-check --quiet "$spec"
     - name: Run
       shell: bash
       env:

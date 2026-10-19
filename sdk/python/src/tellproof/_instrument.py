@@ -14,6 +14,7 @@ Messages, inputs, outputs, tool arguments and error messages are never read.
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import importlib
 import importlib.util
@@ -76,6 +77,7 @@ class Call:
         self.input_tokens: int | None = None
         self.output_tokens: int | None = None
         self.guardrail: str | None = None
+        self.prompt: tuple[str, str | None] | None = None  # a stored prompt's ID and version (OpenAI Responses)
         self.error = False
         self.done = False
 
@@ -96,6 +98,10 @@ class Call:
                 a[_core.OUTPUT_TOKENS] = self.output_tokens
             if self.guardrail:
                 a[_core.GUARDRAIL] = self.guardrail
+            if self.prompt:
+                a[_core.PROMPT_NAME] = self.prompt[0]
+                if self.prompt[1]:
+                    a[_core.PROMPT_VERSION] = self.prompt[1]
             _core.record(self.operation, 3, self.start, _core.current_client().clock(), a, error or self.error,
                          llm=True, span_id=self.span_id, trace_id=self.trace_id, frame=self.frame)
         except Exception:
@@ -243,7 +249,8 @@ def wrap_call(orig: Callable, start: Callable[..., Call | None], done: Callable[
                 return await orig(self, *args, **kwargs)
             try:
                 result = await orig(self, *args, **kwargs)
-            except BaseException:
+            except BaseException as e:
+                _safe(_refused, call, e)
                 call.finish(error=True)
                 raise
             return _end(done, call, result)
@@ -256,11 +263,19 @@ def wrap_call(orig: Callable, start: Callable[..., Call | None], done: Callable[
             return orig(self, *args, **kwargs)
         try:
             result = orig(self, *args, **kwargs)
-        except BaseException:
+        except BaseException as e:
+            _safe(_refused, call, e)
             call.finish(error=True)
             raise
         return _end(done, call, result)
     return wrapper
+
+
+def _refused(call: Call, err: BaseException) -> None:
+    """Azure OpenAI refuses a prompt its content filter stops with the error
+    code content_filter: a guardrail block. Only the code is read."""
+    if call.provider == "azure.ai.openai" and getattr(err, "code", None) == "content_filter":
+        call.guardrail = "block"
 
 
 def _begin(start, self, args, kwargs) -> Call | None:
@@ -321,13 +336,36 @@ def _given(kwargs: dict, name: str) -> bool:
     return name in kwargs and type(kwargs[name]).__name__ not in ("NotGiven", "Omit")
 
 
-def _openai_start(operation: str, chat: bool = False):
+def _openai_start(operation: str, chat: bool = False, responses: bool = False):
     def start(self, args, kwargs):
         provider, region = _openai_provider(self)
         if chat and _stream_usage and kwargs.get("stream") is True and not _given(kwargs, "stream_options"):
             kwargs["stream_options"] = {"include_usage": True}
-        return Call(provider, kwargs.get("model"), operation, region)
+        call = Call(provider, kwargs.get("model"), operation, region)
+        if responses and _given(kwargs, "prompt"):
+            # A stored prompt is named by reference: its ID and version, never its text or variables.
+            ref = kwargs["prompt"]
+            pid, ver = _core.clean(_get(ref, "id")), _core.clean(_get(ref, "version"))
+            if pid:
+                call.prompt = (pid, ver)
+        return call
     return start
+
+
+def _azure_filter(call: Call, result: Any) -> None:
+    """Azure OpenAI's content filter ran when a response carries its results:
+    the call was guarded, and blocked when a choice ended on content_filter.
+    Only the presence of the results and the finish reasons are read."""
+    if call.provider != "azure.ai.openai":
+        return
+    choices = _get(result, "choices") or []
+    if not isinstance(choices, (list, tuple)):
+        return
+    ran = _get(result, "prompt_filter_results") is not None or any(_get(c, "content_filter_results") is not None for c in choices)
+    if any(_get(c, "finish_reason") == "content_filter" for c in choices):
+        call.guardrail = "block"
+    elif ran and call.guardrail is None:
+        call.guardrail = "allow"
 
 
 def _openai_observe(call: Call, item: Any) -> None:
@@ -344,6 +382,7 @@ def _openai_observe(call: Call, item: Any) -> None:
     if isinstance(m, str):
         call.response_model = m
     _openai_usage(call, _get(item, "usage"))
+    _azure_filter(call, item)
 
 
 def _openai_done(call: Call, result: Any) -> Any:
@@ -355,23 +394,54 @@ def _openai_done(call: Call, result: Any) -> Any:
     if isinstance(m, str):
         call.response_model = m
     _openai_usage(call, _get(result, "usage"))
+    _azure_filter(call, result)
     if _get(result, "status") == "failed":
         call.error = True
     call.finish()
     return result
 
 
+def _moderation_done(result: Any) -> None:
+    """An OpenAI moderation check is a guardrail: flagged or not, for the
+    request's model calls. Only the flagged booleans are read."""
+    results = _get(result, "results") or []
+    if isinstance(results, (list, tuple)) and results:
+        _core.decide("flag" if any(_get(r, "flagged") is True for r in results) else "allow")
+
+
+def _observed(after: Callable[[Any], None]):
+    """Wrap a method (sync or async) that is not a model call, to observe its result."""
+    def make(orig: Callable) -> Callable:
+        if inspect.iscoroutinefunction(orig):
+            @functools.wraps(orig)
+            async def awrapper(self, *args, **kwargs):
+                result = await orig(self, *args, **kwargs)
+                if _core.current_client().enabled:
+                    _safe(after, result)
+                return result
+            return awrapper
+
+        @functools.wraps(orig)
+        def wrapper(self, *args, **kwargs):
+            result = orig(self, *args, **kwargs)
+            if _core.current_client().enabled:
+                _safe(after, result)
+            return result
+        return wrapper
+    return make
+
+
 def instrument_openai() -> bool:
     if not _available("openai"):
         return False
     targets = [
-        ("openai.resources.chat.completions", ("Completions", "AsyncCompletions"), ("create", "parse"), "chat", True),
-        ("openai.resources.responses", ("Responses", "AsyncResponses"), ("create", "parse"), "chat", False),
-        ("openai.resources.embeddings", ("Embeddings", "AsyncEmbeddings"), ("create",), "embeddings", False),
-        ("openai.resources.completions", ("Completions", "AsyncCompletions"), ("create",), "text_completion", False),
+        ("openai.resources.chat.completions", ("Completions", "AsyncCompletions"), ("create", "parse"), "chat", True, False),
+        ("openai.resources.responses", ("Responses", "AsyncResponses"), ("create", "parse"), "chat", False, True),
+        ("openai.resources.embeddings", ("Embeddings", "AsyncEmbeddings"), ("create",), "embeddings", False, False),
+        ("openai.resources.completions", ("Completions", "AsyncCompletions"), ("create",), "text_completion", False, False),
     ]
     done = False
-    for mod_name, classes, methods, op, chat in targets:
+    for mod_name, classes, methods, op, chat, resp in targets:
         try:
             mod = importlib.import_module(mod_name)
         except Exception:
@@ -379,8 +449,16 @@ def instrument_openai() -> bool:
         for cls_name in classes:
             cls = getattr(mod, cls_name, None)
             for m in methods if cls is not None else ():
-                _patch(cls, m, lambda orig, op=op, chat=chat: wrap_call(orig, _openai_start(op, chat), _openai_done))
+                _patch(cls, m, lambda orig, op=op, chat=chat, resp=resp: wrap_call(orig, _openai_start(op, chat, resp), _openai_done))
                 done = True
+    try:
+        mod = importlib.import_module("openai.resources.moderations")
+        for cls_name in ("Moderations", "AsyncModerations"):
+            cls = getattr(mod, cls_name, None)
+            if cls is not None:
+                _patch(cls, "create", _observed(_moderation_done))
+    except Exception:
+        pass
     return done
 
 
@@ -559,9 +637,25 @@ def _bedrock_observe_for(guarded: bool):
     return observe
 
 
+def _apply_guardrail_done(resp: Any) -> None:
+    """Bedrock's ApplyGuardrail is a guardrail check: blocked when it
+    intervened. Only the action is read."""
+    action = _get(resp, "action")
+    if isinstance(action, str):
+        _core.decide("block" if action == "GUARDRAIL_INTERVENED" else "allow")
+
+
 def _make_api_call(orig: Callable) -> Callable:
     @functools.wraps(orig)
     def wrapper(self, operation_name, api_params):
+        if operation_name == "ApplyGuardrail" and _core.current_client().enabled:
+            resp = orig(self, operation_name, api_params)
+            try:
+                if self.meta.service_model.service_name == "bedrock-runtime":
+                    _apply_guardrail_done(resp)
+            except Exception:
+                _core._fail("apply guardrail")
+            return resp
         call = None
         guarded = False
         if operation_name in _BEDROCK_OPS and _core.current_client().enabled:
@@ -623,12 +717,143 @@ def instrument_botocore() -> bool:
     return True
 
 
-def install(stream_usage: bool = False) -> list[str]:
-    """Patch every installed client library; returns the names instrumented."""
+# --- Web frameworks: one trace (request) per request ---------------------------
+
+def _scoped(orig: Callable) -> Callable:
+    """Run a sync request handler inside its own trace."""
+    @functools.wraps(orig)
+    def wrapper(*args, **kwargs):
+        if not _core.current_client().enabled:
+            return orig(*args, **kwargs)
+        with _core.trace():
+            return orig(*args, **kwargs)
+    return wrapper
+
+
+def _ascoped(orig: Callable) -> Callable:
+    """Run an async request handler inside its own trace."""
+    @functools.wraps(orig)
+    async def wrapper(*args, **kwargs):
+        if not _core.current_client().enabled:
+            return await orig(*args, **kwargs)
+        async with _core.trace():
+            return await orig(*args, **kwargs)
+    return wrapper
+
+
+def _asgi_scoped(orig: Callable) -> Callable:
+    """An ASGI app's __call__: HTTP requests only (not lifespan or websockets)."""
+    @functools.wraps(orig)
+    async def call(self, scope, receive, send):
+        if not _core.current_client().enabled or not isinstance(scope, dict) or scope.get("type") != "http":
+            return await orig(self, scope, receive, send)
+        async with _core.trace():
+            return await orig(self, scope, receive, send)
+    return call
+
+
+class _ScopedBody:
+    """A WSGI response body that keeps its request's scope open until the
+    server closes it, so a streamed response's checks and model calls count
+    for their request. Iteration runs in the request's context."""
+
+    def __init__(self, body: Any, ctx: contextvars.Context, scope: Any) -> None:
+        self._body, self._ctx, self._scope = body, ctx, scope
+        self._it = ctx.run(iter, body)
+        self._ended = self._closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return self._ctx.run(next, self._it)
+        except StopIteration:
+            self._end()  # sent in full: the request is over, even if the server never calls close()
+            raise
+
+    def _end(self) -> None:
+        if not self._ended:
+            self._ended = True
+            self._ctx.run(self._scope.__exit__, None, None, None)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            c = getattr(self._body, "close", None)
+            if c is not None:
+                self._ctx.run(c)
+        finally:
+            self._end()
+
+
+def _wsgi_scoped(orig: Callable) -> Callable:
+    """A WSGI app (Flask's wsgi_app): one scope per request, open until the
+    server closes the response body. A file sent with wsgi.file_wrapper is
+    returned as it is (the server may send it with sendfile)."""
+    @functools.wraps(orig)
+    def wsgi_app(self, environ, start_response):
+        if not _core.current_client().enabled:
+            return orig(self, environ, start_response)
+        ctx = contextvars.copy_context()
+        scope = _core.trace()
+        ctx.run(scope.__enter__)
+        try:
+            body = ctx.run(orig, self, environ, start_response)
+        except BaseException as e:
+            ctx.run(scope.__exit__, type(e), e, e.__traceback__)
+            raise
+        fw = environ.get("wsgi.file_wrapper") if isinstance(environ, dict) else None
+        if isinstance(body, (list, tuple)) or (isinstance(fw, type) and isinstance(body, fw)):
+            ctx.run(scope.__exit__, None, None, None)
+            return body
+        return _ScopedBody(body, ctx, scope)
+    return wsgi_app
+
+
+def instrument_flask() -> bool:
+    if not _available("flask"):
+        return False
+    cls = getattr(importlib.import_module("flask.app"), "Flask", None)
+    if cls is None:
+        return False
+    _patch(cls, "wsgi_app", _wsgi_scoped)
+    return True
+
+
+def instrument_starlette() -> bool:  # FastAPI apps are Starlette apps
+    if not _available("starlette"):
+        return False
+    cls = getattr(importlib.import_module("starlette.applications"), "Starlette", None)
+    if cls is None:
+        return False
+    _patch(cls, "__call__", _asgi_scoped)
+    return True
+
+
+def instrument_django() -> bool:
+    if not _available("django"):
+        return False
+    cls = getattr(importlib.import_module("django.core.handlers.base"), "BaseHandler", None)
+    if cls is None:
+        return False
+    _patch(cls, "get_response", _scoped)
+    _patch(cls, "get_response_async", _ascoped)
+    return True
+
+
+def install(stream_usage: bool = False, requests: bool = False) -> list[str]:
+    """Patch every installed client library, and with requests the web
+    frameworks; returns the names instrumented."""
     global _stream_usage
     _stream_usage = bool(stream_usage)
     done = []
-    for name, fn in (("openai", instrument_openai), ("anthropic", instrument_anthropic), ("bedrock", instrument_botocore)):
+    libs = [("openai", instrument_openai), ("anthropic", instrument_anthropic), ("bedrock", instrument_botocore)]
+    if requests:
+        libs += [("flask", instrument_flask), ("starlette", instrument_starlette), ("django", instrument_django)]
+    for name, fn in libs:
         try:
             if fn():
                 done.append(name)

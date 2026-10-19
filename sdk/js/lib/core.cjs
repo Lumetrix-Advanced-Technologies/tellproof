@@ -11,6 +11,7 @@ const crypto = require('node:crypto');
 
 const MAX_VALUE = 128; // helper strings are names and versions, never text
 const DECISIONS = ['allow', 'block', 'flag'];
+const SEVERITY = { allow: 0, flag: 1, block: 2 };
 const MAX_DEFERRED = 1000; // LLM spans held by one guardrail scope
 
 // Attribute names (spec/semconv-map.json v2).
@@ -48,7 +49,7 @@ class Client {
     this.service = service;
     this.clock = clock || wallClockNs;
     this.ids = ids || ((n) => crypto.randomBytes(n).toString('hex'));
-    this.stats = { spans: 0, instrumentationErrors: 0 };
+    this.stats = { spans: 0, instrumentationErrors: 0, unscoped: 0 }; // unscoped: decisions and redactions outside any request
   }
 
   get enabled() {
@@ -95,13 +96,48 @@ function count(v) {
   return null;
 }
 
-// Immutable context: the trace, the enclosing span and inherited attributes.
+// What init() sets for every model call (D-069): agent, prompt and whether
+// calls handle personal data. A scope or a span's own attribute wins.
+let defaults = {};
+function configure({ agent = null, prompt = null, promptVersion = null, personalData = false } = {}) {
+  const d = {};
+  for (const [key, v] of [[A.AGENT_NAME, agent], [A.PROMPT_NAME, prompt], [A.PROMPT_VERSION, promptVersion]]) {
+    const c = clean(v);
+    if (c) d[key] = c;
+  }
+  if (personalData) d[A.DATA_CLASS] = 'personal';
+  defaults = d;
+}
+
+// Guardrail checks registered with guardrailCheck(): { fn, canaries }. More
+// than MAX_CHECKS means a check is wrapped per call (a leak): not registered.
+const MAX_CHECKS = 32;
+const checks = [];
+// Set by the canary module while automatic canaries run: ensureCanaries(check,
+// target) starts them for a check from its first call, with the callable they use.
+const hooks = { ensureCanaries: null };
+
+// What happened in one request (or trace): shared by every async context the
+// request runs in. Never content: flags, a decision and a count.
+class Request {
+  constructor() {
+    this.personal = false;
+    this.redacted = false;
+    this.decision = null; // the strictest guardrail decision so far, for later calls
+    this.calls = 0;
+  }
+}
+
+// Immutable context: the trace, the enclosing span, inherited attributes,
+// the guardrail scope, the request and the tool call in progress.
 class Frame {
-  constructor(traceId, spanId, attrs, guard) {
+  constructor(traceId, spanId, attrs, guard, req = null, tool = null) {
     this.traceId = traceId;
     this.spanId = spanId;
     this.attrs = attrs;
     this.guard = guard;
+    this.req = req;
+    this.tool = tool;
     Object.freeze(this);
   }
 }
@@ -110,10 +146,73 @@ function currentFrame() {
   return als.getStore() || null;
 }
 
-function child(attrs = {}, spanId = null, guard = null) {
+function child(attrs = {}, spanId = null, guard = null, tool = null) {
   const parent = currentFrame();
-  if (parent === null) return new Frame(client.ids(16), spanId, { ...attrs }, guard);
-  return new Frame(parent.traceId, spanId || parent.spanId, { ...parent.attrs, ...attrs }, guard || parent.guard);
+  if (parent === null) return new Frame(client.ids(16), spanId, { ...attrs }, guard, null, tool);
+  return new Frame(parent.traceId, spanId || parent.spanId, { ...parent.attrs, ...attrs }, guard || parent.guard, parent.req, tool || parent.tool);
+}
+
+// init()'s defaults and the request's decision and redaction, for a model call.
+function modelCallFacts(a, parent) {
+  for (const [k, v] of Object.entries(defaults)) if (k !== A.DATA_CLASS && !(k in a)) a[k] = v;
+  const req = parent ? parent.req : null;
+  if (req) {
+    req.calls++;
+    if (req.decision && !(A.GUARDRAIL in a)) a[A.GUARDRAIL] = req.decision;
+  }
+  if (A.DATA_CLASS in a) return; // a personalData() scope decided
+  if ((req && req.personal) || A.DATA_CLASS in defaults) {
+    a[A.DATA_CLASS] = 'personal';
+    a[A.REDACTED] = !!(req && req.redacted);
+  }
+}
+
+// One blocked call: a guardrail blocked a request before any model call.
+function blockedSpan(frame, start, provider = null, model = null) {
+  const end = client.clock();
+  const attrs = { ...(frame ? frame.attrs : {}), [A.OPERATION]: 'chat', [A.PROVIDER]: provider || 'unknown', [A.REQUEST_MODEL]: model || 'unknown' };
+  modelCallFacts(attrs, frame);
+  attrs[A.GUARDRAIL] = 'block';
+  return {
+    traceId: frame ? frame.traceId : client.ids(16),
+    spanId: client.ids(8),
+    parent: frame ? frame.spanId : null,
+    name: 'chat',
+    kind: KIND_CLIENT,
+    start,
+    end: end > start ? end : start,
+    attrs,
+    error: false,
+  };
+}
+
+function blockedCall() {
+  client.emit(blockedSpan(currentFrame(), client.clock()));
+}
+
+// A guardrail decision for the current request's model calls, from a
+// guardrailCheck() or a detected guardrail (moderation, ApplyGuardrail).
+// Several decisions in one request keep the strictest. Outside a request
+// nothing is attributed, except a block, which is one blocked call.
+function decide(d) {
+  if (!(d in SEVERITY) || !client.enabled) return;
+  const f = currentFrame();
+  const g = f ? f.guard : null;
+  if (g && !g._closed) g._escalate(d);
+  else if (f && f.req) {
+    if (f.req.decision === null || SEVERITY[d] > SEVERITY[f.req.decision]) f.req.decision = d;
+  } else if (d === 'block') blockedCall();
+  else client.stats.unscoped++;
+}
+
+// The current request's personal data was redacted (a redactor() ran).
+function markRedacted() {
+  if (!client.enabled) return;
+  const f = currentFrame();
+  if (f && f.req) {
+    f.req.personal = true;
+    f.req.redacted = true;
+  } else client.stats.unscoped++;
 }
 
 // Work queued where emitting is unsafe (finalizers); run on the next record or flush.
@@ -150,6 +249,7 @@ function record(name, kind, start, end, attrs, error, { llm = false, spanId = nu
     attrs: { ...(parent ? parent.attrs : {}), ...attrs },
     error: !!error,
   };
+  if (llm) modelCallFacts(span.attrs, parent);
   if (llm && parent && parent.guard && parent.guard._defer(span)) return;
   c.emit(span);
 }
@@ -201,14 +301,49 @@ function runScope(enter, leave, fn, arg) {
   return result;
 }
 
-// trace(fn): group everything inside into one trace (for example one web request).
+// One request, or one unit of work: a trace of its own, the request's
+// redaction and decision, and, when guardrail checks are registered, a
+// guardrail scope that holds its calls for a decision made after them.
+function requestScope() {
+  const parent = currentFrame();
+  const req = new Request();
+  let g = null;
+  if (checks.length) {
+    g = new Guardrail();
+    g._start = client.clock();
+  }
+  const frame = new Frame(client.ids(16), null, parent ? { ...parent.attrs } : {}, g, req);
+  if (g) g._frame = frame;
+  let left = false;
+  return {
+    frame,
+    leave() {
+      if (left) return;
+      left = true;
+      try {
+        if (g) g._leave();
+        else if (req.decision === 'block' && req.calls === 0 && client.enabled) als.run(frame, blockedCall);
+      } catch (e) {
+        fail('request', e);
+      }
+    },
+  };
+}
+
+function runIn(frame, fn) {
+  return als.run(frame, fn);
+}
+
+// trace(fn): group everything inside into one trace and request (a job, a
+// queue message). Web requests to Node.js HTTP servers get one automatically.
 function trace(fn) {
+  let scope = null;
   return runScope(
     () => {
-      const parent = currentFrame();
-      return new Frame(client.ids(16), null, parent ? { ...parent.attrs } : {}, null);
+      scope = requestScope();
+      return scope.frame;
     },
-    () => {},
+    () => scope && scope.leave(),
     fn,
   );
 }
@@ -261,6 +396,10 @@ class Guardrail {
     else fail('guardrail', new TypeError('decision must be allow, block or flag'));
   }
 
+  _escalate(d) {
+    if (this._decision === null || SEVERITY[d] > SEVERITY[this._decision]) this._decision = d;
+  }
+
   allow() {
     this.decision = 'allow';
   }
@@ -294,20 +433,7 @@ class Guardrail {
   _leave() {
     this._closed = true;
     const frame = this._frame;
-    if (this._calls === 0 && this._decision === 'block') {
-      const end = client.clock();
-      this._pending.push({
-        traceId: frame.traceId,
-        spanId: client.ids(8),
-        parent: frame.spanId,
-        name: 'chat',
-        kind: KIND_CLIENT,
-        start: this._start,
-        end: end > this._start ? end : this._start,
-        attrs: { ...frame.attrs, [A.OPERATION]: 'chat', [A.PROVIDER]: this._provider || 'unknown', [A.REQUEST_MODEL]: this._model || 'unknown' },
-        error: false,
-      });
-    }
+    if (this._calls === 0 && this._decision === 'block') this._pending.push(blockedSpan(frame, this._start, this._provider, this._model));
     for (const span of this._pending) {
       if (this._decision && !(A.GUARDRAIL in span.attrs)) span.attrs[A.GUARDRAIL] = this._decision;
       if (!this._outer || !this._outer._defer(span)) client.emit(span);
@@ -325,7 +451,7 @@ function guardrail(opts, fn) {
 }
 
 // A helper that is itself a span. The handle is passed to fn.
-function spanScope(handle, name, kind, llm, attrsOf, inherit, fn) {
+function spanScope(handle, name, kind, llm, attrsOf, inherit, fn, isTool = false) {
   let start = 0n;
   let spanId = null;
   let traceId = null;
@@ -333,7 +459,7 @@ function spanScope(handle, name, kind, llm, attrsOf, inherit, fn) {
     () => {
       start = client.clock();
       spanId = client.ids(8);
-      const frame = child(inherit(), spanId);
+      const frame = child(inherit(), spanId, null, isTool ? handle : null);
       traceId = frame.traceId; // a root span starts the trace its children join
       return frame;
     },
@@ -350,8 +476,111 @@ function spanScope(handle, name, kind, llm, attrsOf, inherit, fn) {
   );
 }
 
+// A function that runs before(thisArg) and fn, sync or async, and then
+// after(result); the app's result, promise object and errors pass through
+// unchanged (a promise's result is observed on a side branch).
+function decorate(fn, after, before = null) {
+  if (typeof fn !== 'function') {
+    fail('decorate', new TypeError('not a function'));
+    return fn;
+  }
+  const note = (v) => {
+    try {
+      after(v);
+    } catch (e) {
+      fail('decorated', e);
+    }
+  };
+  const wrapped = function (...args) {
+    if (before) {
+      try {
+        before(this);
+      } catch (e) {
+        fail('decorated', e);
+      }
+    }
+    const r = fn.apply(this, args);
+    if (r !== null && typeof r === 'object' && typeof r.then === 'function') {
+      try {
+        r.then(note, () => {});
+      } catch (e) {
+        fail('decorated', e);
+      }
+      return r;
+    }
+    note(r);
+    return r;
+  };
+  Object.defineProperty(wrapped, 'name', { value: fn.name, configurable: true });
+  return wrapped;
+}
+
+// A check's result as a decision: true or "block" blocks, "flag" flags,
+// anything else allows. Only compared, never kept.
+function decisionOf(r) {
+  if (r === true) return 'block';
+  if (typeof r === 'string' && r.length <= 5) {
+    const l = r.toLowerCase();
+    if (l === 'block' || l === 'flag') return l;
+  }
+  return 'allow';
+}
+
+// guardrailCheck(fn, { canaries }): the app's own guardrail check, a function
+// of the text that returns true (or "block" or "flag") when it would stop it.
+// Each call's decision counts for the current request's model calls, and,
+// unless canaries is false (an output-only check), the SDK sends it the canary
+// probes from its first call, then hourly, with the same `this`. Its argument
+// and result are never recorded. Wrap it once, where it is defined: at most
+// 32 checks are registered.
+function guardrailCheck(fn, { canaries = true } = {}) {
+  if (typeof fn !== 'function') {
+    fail('guardrailCheck', new TypeError('not a function'));
+    return fn;
+  }
+  let check = null;
+  try {
+    check = checks.find((c) => c.fn === fn) || null;
+    if (!check && checks.length < MAX_CHECKS) {
+      check = { fn, canaries: !!canaries };
+      checks.push(check);
+    } else if (!check) fail('guardrailCheck', new RangeError('more than 32 registered; wrap a check once, where it is defined'));
+  } catch (e) {
+    fail('guardrailCheck', e);
+  }
+  const before = (thisArg) => {
+    const ensure = hooks.ensureCanaries;
+    if (check && check.canaries && ensure) ensure(check, thisArg === undefined || thisArg === globalThis ? fn : fn.bind(thisArg));
+  };
+  return decorate(fn, (r) => decide(decisionOf(r)), before);
+}
+
+// redactor(fn): the app's own redaction function; once it has returned, the
+// current request's model calls count as handling personal data, redacted.
+// Its arguments and result are never read.
+function redactor(fn) {
+  return decorate(fn, () => markRedacted());
+}
+
+// approve(): the tool call in progress was approved by a person or a policy.
+function approve() {
+  const f = currentFrame();
+  if (f && f.tool) f.tool.approved = true;
+}
+
+// A function that runs fn inside scope(fn's name, opts, ...) on every call.
+function wrapIn(scope, fn, opts) {
+  const wrapped = function (...args) {
+    return scope(fn.name || null, opts, () => fn.apply(this, args));
+  };
+  Object.defineProperty(wrapped, 'name', { value: fn.name, configurable: true });
+  return wrapped;
+}
+
 // tool(name, {highImpact, approved}, fn): a tool call; fn gets {approved, highImpact, error}.
+// tool(fn, {highImpact}): a function that is a tool call each time it runs, named after it.
 function tool(name, opts, fn) {
+  if (typeof name === 'function') return wrapIn(tool, name, opts || {});
   if (typeof opts === 'function') [opts, fn] = [{}, opts];
   const t = { name: clean(name), highImpact: !!(opts && opts.highImpact), approved: !!(opts && opts.approved), error: false };
   return spanScope(
@@ -366,11 +595,14 @@ function tool(name, opts, fn) {
     },
     () => ({}),
     fn,
+    true,
   );
 }
 
 // agentRun(name, fn): one run of an agent; calls inside count toward this agent's model history.
+// agentRun(fn): a function that is an agent run each time it runs, named after it.
 function agentRun(name, fn) {
+  if (typeof name === 'function' && fn === undefined) return wrapIn((n, _o, f) => agentRun(n, f), name, {});
   const h = { name: clean(name), error: false };
   return spanScope(
     h,
@@ -434,6 +666,18 @@ function escalation() {
 
 module.exports = {
   A,
+  SEVERITY,
+  configure,
+  checks,
+  hooks,
+  MAX_CHECKS,
+  decide,
+  markRedacted,
+  requestScope,
+  runIn,
+  guardrailCheck,
+  redactor,
+  approve,
   MAX_VALUE,
   KIND_CLIENT,
   KIND_INTERNAL,

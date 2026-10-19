@@ -49,7 +49,7 @@ func TestBannerFitsTheTerminal(t *testing.T) {
 			}
 		}
 	}
-	if w := welcomeText(palette{mode: 2}, 80); !strings.Contains(w, "run --local") {
+	if w := welcomeText(palette{mode: 2}, 80); !strings.Contains(w, "tellproof-agent start") {
 		t.Errorf("welcome has no first steps:\n%s", w)
 	} else {
 		for _, line := range strings.Split(w, "\n") {

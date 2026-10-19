@@ -12,7 +12,7 @@ import { join } from 'node:path';
 
 const shared = (marker) => `
 const MARKER = ${JSON.stringify(marker)};
-class APIError extends Error {}
+class APIError extends Error { constructor(message, code) { super(message); this.code = code; } }
 
 // Stainless APIPromise: parses only when consumed; _thenUnwrap keeps the response.
 class APIPromise extends Promise {
@@ -79,11 +79,22 @@ const response = (model, status = 'completed') => ({ id: 'r', object: 'response'
   output: [{ type: 'message', content: [{ type: 'output_text', text: MARKER }] }],
   usage: { input_tokens: 80, output_tokens: 12, total_tokens: 92 } });
 class APIResource { constructor(client) { this._client = client; } }
+// Azure OpenAI adds its content filter's results to every response.
+const azure = (client, data, model) => {
+  if (!client.constructor.name.includes('Azure')) return data;
+  data.prompt_filter_results = [{ prompt_index: 0, content_filter_results: { hate: { filtered: false, severity: 'safe' } } }];
+  for (const c of data.choices) {
+    c.content_filter_results = { hate: { filtered: model === 'filtered', severity: model === 'filtered' ? 'high' : 'safe' } };
+    if (model === 'filtered') c.finish_reason = 'content_filter';
+  }
+  return data;
+};
 class Completions extends APIResource {
   create(body, options) {
     if (body.model === 'boom') return new APIPromise(this._client, Promise.reject(new APIError('400 ' + MARKER)));
+    if (body.model === 'refused') return new APIPromise(this._client, Promise.reject(new APIError('400 filtered ' + MARKER, 'content_filter')));
     if (body.stream) return request(this._client, () => new Stream(chunks(body.model, body.stream_options && body.stream_options.include_usage)));
-    return request(this._client, () => completion(body.model));
+    return request(this._client, () => azure(this._client, completion(body.model), body.model));
   }
   parse(body, options) { return this.create({ ...body, stream: false }, options)._thenUnwrap((c) => ({ ...c, parsed: true })); }
   // like openai's ChatCompletionStream: create(stream: true), then iterate
@@ -106,6 +117,13 @@ class Responses extends APIResource {
 class Embeddings extends APIResource {
   create(body) { return request(this._client, () => ({ object: 'list', model: body.model, data: [{ embedding: [0.1] }], usage: { prompt_tokens: 9, total_tokens: 9 } })); }
 }
+class Moderations extends APIResource {
+  create(body) {
+    const flagged = String(body.input).includes('FLAG');
+    return request(this._client, () => ({ id: 'modr', model: 'omni-moderation-latest',
+      results: [{ flagged, categories: { violence: flagged }, category_scores: { violence: flagged ? 0.9 : 0.01 } }] }));
+  }
+}
 class LegacyCompletions extends APIResource {
   create(body) { return request(this._client, () => ({ model: body.model, choices: [{ text: MARKER }], usage: { prompt_tokens: 4, completion_tokens: 2 } })); }
 }
@@ -116,9 +134,11 @@ class OpenAI {
     this.responses = new Responses(this);
     this.embeddings = new Embeddings(this);
     this.completions = new LegacyCompletions(this);
+    this.moderations = new Moderations(this);
   }
 }
 OpenAI.Chat = Chat;
+OpenAI.Moderations = Moderations;
 OpenAI.Responses = Responses;
 OpenAI.Embeddings = Embeddings;
 OpenAI.Completions = LegacyCompletions;
@@ -186,6 +206,7 @@ class ConverseStreamCommand extends Command {}
 class InvokeModelCommand extends Command {}
 class InvokeModelWithResponseStreamCommand extends Command {}
 class ListFoundationModelsCommand extends Command {}
+class ApplyGuardrailCommand extends Command {}
 class ValidationException extends Error {}
 
 async function* events(list) { for (const e of list) yield e; }
@@ -226,6 +247,9 @@ class BedrockRuntimeClient extends Client {
         output: { ...meta, body: new TextEncoder().encode(JSON.stringify({ content: [{ text: MARKER }] })), contentType: 'application/json' } };
     if (command instanceof InvokeModelWithResponseStreamCommand)
       return { response: { headers: {} }, output: { ...meta, body: events([{ chunk: { bytes: new TextEncoder().encode(MARKER) } }]) } };
+    if (command instanceof ApplyGuardrailCommand)
+      return { response: { headers: {} }, output: { ...meta, action: input._intervene ? 'GUARDRAIL_INTERVENED' : 'NONE',
+        outputs: [{ text: MARKER }], assessments: [{ topicPolicy: { topics: [{ name: MARKER }] } }] } };
     return { response: { headers: {} }, output: { ...meta, modelSummaries: [{ modelName: MARKER }] } };
   }
 }
@@ -234,7 +258,7 @@ class BedrockRuntime extends BedrockRuntimeClient {
 }
 `;
 
-const BEDROCK_EXPORTS = 'BedrockRuntimeClient, BedrockRuntime, ConverseCommand, ConverseStreamCommand, InvokeModelCommand, InvokeModelWithResponseStreamCommand, ListFoundationModelsCommand, ValidationException';
+const BEDROCK_EXPORTS = 'BedrockRuntimeClient, BedrockRuntime, ConverseCommand, ConverseStreamCommand, InvokeModelCommand, InvokeModelWithResponseStreamCommand, ListFoundationModelsCommand, ApplyGuardrailCommand, ValidationException';
 
 function pkg(root, name, source, cjsExports, esmExports) {
   const dir = join(root, 'node_modules', ...name.split('/'));

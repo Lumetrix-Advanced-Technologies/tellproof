@@ -3,7 +3,8 @@
 One line to send evidence telemetry from an AI product to the local Tellproof evidence agent.
 
 ```bash
-pip install tellproof
+pip install "tellproof[agent]"   # the SDK and the agent, in one step
+tellproof start                  # the agent, in the background, with a dashboard on http://127.0.0.1:4319
 ```
 
 ```python
@@ -11,9 +12,11 @@ import tellproof
 tellproof.init()
 ```
 
-The SDK records one span per model call with provider, model, region, token counts, operation, timing and error status, and sends it as OTLP JSON to the agent on `http://127.0.0.1:4318` (or `TELLPROOF_AGENT_URL`). The agent aggregates per hour and signs the aggregates: it keeps them in a local evidence log (`tellproof-agent local`) or sends them to Tellproof (`tellproof-agent connect`). **The SDK never reads prompts, completions, function arguments, return values or exception messages**, so there is no content to filter.
+`tellproof stop` stops the agent, `tellproof status` says whether it runs. In production the agent usually runs beside the app (a sidecar or a service), so the app needs only `pip install tellproof`.
 
-- No dependencies: standard library only, Python 3.10+.
+The SDK records one span per model call with provider, model, region, token counts, operation, timing and error status, and sends it as OTLP JSON to the agent on `http://127.0.0.1:4318` (or `TELLPROOF_AGENT_URL`). The agent aggregates per hour and signs the aggregates: it keeps them in a local evidence log (`tellproof start`) or sends them to Tellproof (`tellproof-agent connect`). **The SDK never reads prompts, completions, function arguments, return values or exception messages**, so there is no content to filter.
+
+- No dependencies: standard library only, Python 3.10+. The `[agent]` extra adds the agent package, which the SDK never imports.
 - Never slows or breaks the app: spans go to a bounded background buffer; when it is full, spans are dropped and counted (`tellproof.stats()`). SDK errors are swallowed and counted.
 - `TELLPROOF_DISABLED=1` turns it off. `init()` is safe to call more than once.
 - Proxies are never used: the agent is local.
@@ -37,37 +40,40 @@ Things to know:
 - **OpenAI streamed chat completions** report usage only if asked. `tellproof.init(stream_usage=True)` sets `stream_options={"include_usage": True}` when the app has not set it; the stream then ends with one extra chunk with no `choices`. Off by default, so the app's streams are unchanged.
 - **Bedrock guardrails**: a Converse call with `guardrailConfig` is a guarded call, `block` when the stop reason is `guardrail_intervened`, else `allow`.
 - `invoke_model_with_response_stream` reports its token counts only inside the streamed body, which the SDK never reads, so those calls are counted without tokens. `with_raw_response` calls are counted without tokens too.
-- `tellproof.init(instrument=False)` turns automatic instrumentation off; the helpers still work.
+- `tellproof.init(instrument=False)` turns automatic instrumentation off; the decorators and scopes still work.
 
-## What the helpers record
+## Tell it the rest
 
-Tellproof's evidence objectives need a few facts that no LLM client knows. Each helper is a context manager (`with` or `async with`) and a decorator.
+`init()` takes the facts that hold for every call: `agent="triage"`, `prompt="claims-triage", prompt_version="14"`, `personal_data=True` (or `TELLPROOF_AGENT_NAME`, `TELLPROOF_PROMPT`, `TELLPROOF_PROMPT_VERSION`, `TELLPROOF_PERSONAL_DATA=1`). Web requests are scoped for you (Flask, FastAPI, Starlette, Django; `requests=False` turns that off), so for the rest, mark the functions you already have:
+
+```python
+@tellproof.guardrail_check            # True (or "block"/"flag") stops the text: decides for this request's calls, and gets canaries hourly
+def check(text): ...
+
+@tellproof.redactor                   # this request's calls handle personal data, redacted
+def redact(messages): ...
+
+@tellproof.tool(high_impact=True)     # a tool call, named after the function; an exception marks it failed
+def issue_refund(claim):
+    tellproof.approve()               # a person or a policy approved it
+```
+
+OpenAI moderation, Bedrock `ApplyGuardrail` and `guardrailConfig`, Azure OpenAI's content filter and OpenAI stored prompts (their ID and version) are recorded without code. A check's decision counts for its request, before or after the calls; the strictest wins; a request blocked before any call is one blocked call. Outside a web request (a worker, a script), put `@tellproof.trace` on the unit of work; until then decisions are not attributed (`stats()["unscoped"]` counts them).
+
+## Scopes
+
+Scopes say the same explicitly for a block of code and win over the above. Each is a context manager (`with` or `async with`) and a decorator.
 
 | Helper | Records |
 | --- | --- |
+| `tellproof.trace()` | one request (a trace, its decisions and redaction); automatic for web requests |
 | `tellproof.prompt(name, version)` | the prompt (name and version, never its text) used by calls inside |
 | `tellproof.personal_data(redacted=False)` | spans inside handle personal data; `redacted` says it was removed or masked before the model saw it |
 | `tellproof.guardrail(decision=None)` | the guardrail decision (`allow`, `block`, `flag`) for calls inside; set it later with `g.allow()`, `g.block()`, `g.flag()` |
-| `tellproof.tool(name, high_impact=False, approved=False)` | a tool call; failures inside mark it failed; set `t.approved = True` once approved |
-| `tellproof.agent_run(name)` | one agent run; model changes are tracked per agent |
+| `tellproof.tool(name, high_impact=False, approved=False)` | a tool call; failures inside mark it failed; set `t.approved = True` (or `tellproof.approve()`) once approved |
+| `tellproof.agent_run(name)` | one agent run; model changes are tracked per agent (`@tellproof.agent_run` names it after the function) |
 | `tellproof.escalation()` | the request was handed to a person |
-| `tellproof.trace()` | groups everything inside into one trace (for example one web request) |
 | `tellproof.llm_call(provider, model, operation="chat", region=None)` | a model call the SDK does not instrument; report usage with `c.usage(input_tokens, output_tokens)` |
-
-```python
-with tellproof.trace(), tellproof.prompt("claims-triage", "14"), tellproof.personal_data(redacted=True):
-    with tellproof.guardrail() as g:
-        if not input_policy_ok(request):
-            g.block()          # recorded as one blocked call; the model was never called
-            return refusal()
-        with tellproof.llm_call("openai", "gpt-4.1-mini", region="us-east-1") as c:
-            r = client.chat.completions.create(...)
-            c.usage(r.usage.prompt_tokens, r.usage.completion_tokens)
-        g.flag() if needs_review(r) else g.allow()
-
-@tellproof.tool("issue_refund", high_impact=True)
-def issue_refund(claim): ...
-```
 
 Names and versions are capped at 128 characters; anything that is not a string or an integer is ignored.
 

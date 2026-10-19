@@ -14,10 +14,11 @@ jobs:
     permissions: { contents: read }
     outputs: { version: "${{ steps.v.outputs.version }}" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: "3.12" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: "22" }
       - id: v
         run: |
@@ -27,7 +28,7 @@ jobs:
           [ "$py" = "$v" ] && [ "$js" = "$v" ] || { echo "tag $v, pyproject $py, package.json $js"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - run: python -m unittest discover -s sdk/python/tests
-      - run: node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs
+      - run: node --test sdk/js/test/sdk.test.mjs sdk/js/test/instrument.test.mjs sdk/js/test/cli.test.mjs sdk/js/test/simple.test.mjs
       - name: Smoke test (build both packages, install them, import them)
         env: { V: "${{ steps.v.outputs.version }}" }
         run: |
@@ -39,6 +40,11 @@ jobs:
           mkdir -p /tmp/npm && cd /tmp/npm && npm init -y > /dev/null && npm install --no-audit --no-fund "/tmp/tellproof-$V.tgz" > /dev/null
           node -e 'const t = require("tellproof"); if (t.VERSION !== process.env.V) process.exit(1); console.log("node", t.VERSION)'
           node --input-type=module -e 'import t from "tellproof"; console.log("esm", t.VERSION)'
+          # One install brings the agent (D-067): the extra on PyPI, the optional dependency on npm.
+          # The agent release the extra names must be published first.
+          /tmp/py/bin/pip install --quiet "$(ls /tmp/dist/tellproof-*.whl)[agent]"
+          /tmp/py/bin/tellproof version | grep '^tellproof-agent v'
+          npx --no-install tellproof version | grep '^tellproof-agent v'
 
   pypi:
     needs: check
@@ -46,11 +52,12 @@ jobs:
     environment: release
     permissions: { contents: read, id-token: write }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: "3.12" }
       - run: pip install build && python -m build sdk/python --outdir dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   npm:
     # Staged publishing (D-062): staged with tellproof's npm trusted publisher
@@ -61,8 +68,9 @@ jobs:
     environment: release
     permissions: { contents: read, id-token: write }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
       - run: npm install -g "npm@>=11.15.0 <13" && npm --version   # npm stage needs npm 11.15.0+
       - name: Stage for approval on npmjs.com (skipped when on npm or already staged)

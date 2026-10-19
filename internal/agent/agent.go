@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,7 +68,12 @@ type Agent struct {
 	pulledThru time.Time       // Langfuse hours pulled up to here
 	firstSpans time.Time       // when the first spans of this run arrived
 	firstSent  bool            // the early first batch has been sent
+
+	onListening func() // called by Run once the receiver listens
 }
+
+// OnListening sets a function Run calls once the OTLP receiver listens.
+func (a *Agent) OnListening(f func()) { a.onListening = f }
 
 // LocalDir is the local evidence log in the data directory (localreport reads it).
 const LocalDir = localreport.Dir
@@ -193,6 +199,30 @@ func (a *Agent) Receiver() http.Handler {
 		}
 		a.mu.Unlock()
 	}}
+}
+
+// LocalHostOnly refuses requests whose Host is not a local name: localhost,
+// a *.localhost name or a loopback address. A receiver that listens on
+// loopback only is reached under such a name by every real client; a web page
+// that rebinds its own domain to 127.0.0.1 is not, so it cannot post spans
+// into the evidence (a JSON POST from another origin is already refused, as
+// the receiver answers no CORS preflight).
+func LocalHostOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if hh, _, err := net.SplitHostPort(host); err == nil {
+			host = hh
+		}
+		host = strings.ToLower(strings.Trim(host, "[]"))
+		ip := net.ParseIP(host)
+		if host != "localhost" && !strings.HasSuffix(host, ".localhost") && (ip == nil || !ip.IsLoopback()) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"code":403,"message":"this agent accepts spans only under a local host name (127.0.0.1 or localhost); set otlp_allow_remote to receive from other hosts"}`+"\n")
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // Replay feeds an OTLP JSON export (one request per line, or one document)
@@ -375,13 +405,20 @@ func (a *Agent) Deliver(ctx context.Context) error {
 // ends, then shuts down gracefully.
 func (a *Agent) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.Handle("POST /v1/traces", a.Receiver())
+	recv := a.Receiver()
+	if !a.cfg.OTLPAllowRemote {
+		recv = LocalHostOnly(recv)
+	}
+	mux.Handle("POST /v1/traces", recv)
 	ln, err := net.Listen("tcp", a.cfg.OTLPListen)
 	if err != nil {
 		return fmt.Errorf("agent: listen %s: %w", a.cfg.OTLPListen, err)
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
+	if a.onListening != nil {
+		a.onListening()
+	}
 	a.opt.Log.Info("agent started", "agent_id", a.id.AgentID, "otlp", a.cfg.OTLPListen, "server", a.cfg.Server, "dry_run", a.opt.DryRun, "local", a.opt.Local)
 
 	every := a.opt.TickEvery

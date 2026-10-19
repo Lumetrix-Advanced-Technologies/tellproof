@@ -66,12 +66,16 @@ DESCRIPTION = """# tellproof-agent
 
 The [Tellproof](https://github.com/lumetrix-advanced-technologies/tellproof) evidence agent, installed with pip.
 
+Most people install it with the SDK, in one step:
+
 ```bash
-pip install tellproof-agent tellproof
-tellproof-agent run --local      # no account or server; dashboard on http://127.0.0.1:4319
+pip install "tellproof[agent]"
+tellproof start      # in the background: no account or server; dashboard on http://127.0.0.1:4319
+tellproof stop
 ```
 
-Add `import tellproof; tellproof.init()` to your app. The agent keeps a signed,
+Add `import tellproof; tellproof.init()` to your app. `tellproof` and
+`tellproof-agent` are the same commands. The agent keeps a signed,
 content-free hourly record of every model call: models and regions, tokens,
 guardrail decisions, personal-data redaction, agent tool use, prompt and model
 changes. It never reads a prompt or a completion.

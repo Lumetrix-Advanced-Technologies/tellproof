@@ -1,6 +1,6 @@
 {
-  "version": "v3",
-  "note": "Old and new OTel GenAI attribute names map to one internal field. The tellproof.* fields carry facts no GenAI convention defines yet (D-020); agents may override their names per deployment. Content fields are presence-only: their values are never read, and any attribute whose name starts with a presence_only_prefixes entry counts as content too. v3: the tellproof.* names (D-056); the plumbline.* names they replace are read as aliases. tellproof.canary.kind and tellproof.canary.caught mark a guardrail canary span (D-057).",
+  "version": "v4",
+  "note": "Old and new OTel GenAI attribute names map to one internal field. The tellproof.* fields carry facts no GenAI convention defines yet (D-020); agents may override their names per deployment. Content fields are presence-only: their values are never read, and any attribute whose name starts with a presence_only_prefixes entry counts as content too. v3: the tellproof.* names (D-056); the plumbline.* names they replace are read as aliases. tellproof.canary.kind and tellproof.canary.caught mark a guardrail canary span (D-057). v4: the content spellings of the newer GenAI names, OpenInference, Traceloop, Langfuse and the Vercel AI SDK count as content too (D-066).",
   "fields": {
     "provider": [
       "gen_ai.provider.name",
@@ -74,7 +74,21 @@
     "gen_ai.input.messages",
     "gen_ai.output.messages",
     "gen_ai.prompt",
-    "gen_ai.completion"
+    "gen_ai.completion",
+    "gen_ai.system_instructions",
+    "gen_ai.tool.call.arguments",
+    "gen_ai.tool.call.result",
+    "input.value",
+    "output.value",
+    "traceloop.entity.input",
+    "traceloop.entity.output",
+    "langfuse.observation.input",
+    "langfuse.observation.output",
+    "ai.prompt",
+    "ai.prompt.messages",
+    "ai.response.text",
+    "ai.toolCall.args",
+    "ai.toolCall.result"
   ],
   "presence_only_prefixes": [
     "gen_ai.prompt.",
@@ -82,7 +96,9 @@
     "gen_ai.input.messages.",
     "gen_ai.output.messages.",
     "llm.prompts.",
-    "llm.completions."
+    "llm.completions.",
+    "llm.input_messages.",
+    "llm.output_messages."
   ],
   "llm_operations": [
     "chat",

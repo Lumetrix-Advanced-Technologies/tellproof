@@ -3,6 +3,7 @@ package aggregate
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,13 +18,13 @@ import (
 
 var sampleFile = filepath.Join("..", "..", "concierge", "testdata", "otlp-sample.jsonl")
 
-func parseSample(t *testing.T) []otlp.Span {
+func parseFile(t *testing.T, file string) []otlp.Span {
 	t.Helper()
 	m, err := otlp.DefaultMapping()
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(sampleFile)
+	b, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,13 +57,65 @@ func toMap(t *testing.T, v any) any {
 
 // Acceptance: aggregates for the fixture equal the concierge's C-1 output.
 func TestParityWithConciergeIngest(t *testing.T) {
+	assertParity(t, sampleFile)
+}
+
+// Acceptance (D-066): every content attribute spelling of the leak corpus, in
+// a span's attributes or its events, counts the same in the agent and the
+// concierge, and a span counts once however many it carries.
+func TestContentSpellingsParityWithConcierge(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "spec", "leak-corpus.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var corpus struct {
+		ContentAttributes []string `json:"content_attributes"`
+	}
+	if err := json.Unmarshal(raw, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	str := func(v string) map[string]any { return map[string]any{"stringValue": v} }
+	kv := func(k string, v map[string]any) map[string]any { return map[string]any{"key": k, "value": v} }
+	n := 0
+	span := func(attrs, events []any) map[string]any {
+		n++
+		start := at(9, 0).Add(time.Duration(n) * time.Second).UnixNano()
+		return map[string]any{"traceId": fmt.Sprintf("%032x", n), "spanId": fmt.Sprintf("%016x", n), "name": "chat",
+			"startTimeUnixNano": fmt.Sprint(start), "endTimeUnixNano": fmt.Sprint(start + 1e6),
+			"attributes": append([]any{kv("gen_ai.operation.name", str("chat")), kv("gen_ai.request.model", str("gpt-4o"))}, attrs...), "events": events}
+	}
+	var spans, all []any
+	for _, a := range corpus.ContentAttributes {
+		spans = append(spans, span([]any{kv(a, str("x"))}, nil),
+			span(nil, []any{map[string]any{"name": "content", "timeUnixNano": "1", "attributes": []any{kv(a, str("x"))}}}))
+		all = append(all, kv(a, str("x")))
+	}
+	spans = append(spans, span(all, nil), span(nil, nil))
+	doc, _ := json.Marshal(map[string]any{"resourceSpans": []any{map[string]any{
+		"resource":   map[string]any{"attributes": []any{kv("service.name", str("parity")), kv("input.value", str("x"))}},
+		"scopeSpans": []any{map[string]any{"spans": spans}}}}})
+	file := filepath.Join(t.TempDir(), "content.jsonl")
+	if err := os.WriteFile(file, append(doc, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertParity(t, file)
+}
+
+// assertParity checks that the agent's aggregates for an OTLP JSONL file
+// equal the concierge's.
+func assertParity(t *testing.T, file string) {
+	t.Helper()
 	py, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 not installed")
 	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		t.Fatal(err)
+	}
 	script := "import sys, json; sys.path.insert(0, 'concierge'); import ingest; " +
-		"out, _ = ingest.ingest('otlp', ['concierge/testdata/otlp-sample.jsonl'], b'parity'); print(json.dumps(out['windows']))"
-	cmd := exec.Command(py, "-c", script)
+		"out, _ = ingest.ingest('otlp', [sys.argv[1]], b'parity'); print(json.dumps(out['windows']))"
+	cmd := exec.Command(py, "-c", script, abs)
 	cmd.Dir = filepath.Join("..", "..")
 	raw, err := cmd.Output()
 	if err != nil {
@@ -81,7 +134,7 @@ func TestParityWithConciergeIngest(t *testing.T) {
 	}
 
 	a := New(DefaultConfig())
-	spans := parseSample(t)
+	spans := parseFile(t, file)
 	a.Add(spans, spans[len(spans)-1].Start)
 	got := a.FlushAll()
 	if len(got) != len(want) {

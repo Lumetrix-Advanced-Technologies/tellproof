@@ -43,3 +43,10 @@ func enableColor(f *os.File) bool {
 	r, _, _ := procSetMode.Call(f.Fd(), uintptr(mode|vtProcessing))
 	return r != 0
 }
+
+// isTTY reports whether f is a console.
+func isTTY(f *os.File) bool {
+	var mode uint32
+	r, _, _ := procGetMode.Call(f.Fd(), uintptr(unsafe.Pointer(&mode)))
+	return r != 0
+}

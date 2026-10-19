@@ -286,14 +286,17 @@ func (m *Mapping) build(traceID string, start time.Time, spanVals, resVals map[s
 	if model == "" {
 		model = m.str("request_model", spanVals, resVals)
 	}
+	// What a batch carries must be an identifier (D-065): content or a
+	// credential in one of these attributes becomes "invalid".
+	id := defaultIdentifiers
 	s := Span{
 		TraceID:        traceID,
 		Start:          start,
 		Kind:           kind,
 		Operation:      op,
-		Provider:       orUnknown(m.str("provider", spanVals, resVals)),
-		Model:          orUnknown(model),
-		Region:         orUnknown(m.str("region", spanVals, resVals)),
+		Provider:       orUnknown(id.clean(m.str("provider", spanVals, resVals))),
+		Model:          orUnknown(id.clean(model)),
+		Region:         orUnknown(id.clean(m.str("region", spanVals, resVals))),
 		InputTokens:    m.count("input_tokens", spanVals, resVals),
 		OutputTokens:   m.count("output_tokens", spanVals, resVals),
 		Error:          isError,
@@ -302,14 +305,18 @@ func (m *Mapping) build(traceID string, start time.Time, spanVals, resVals map[s
 		Redacted:       m.flag("redacted", spanVals, resVals),
 		Guardrail:      m.str("guardrail_decision", spanVals),
 		PromptName:     m.str("prompt_name", spanVals, resVals),
-		PromptVersion:  m.str("prompt_version", spanVals, resVals),
+		PromptVersion:  id.clean(m.str("prompt_version", spanVals, resVals)),
 		Slot:           m.str("agent_slot", spanVals, resVals),
 		HighImpact:     m.flag("tool_high_impact", spanVals),
 		Approved:       m.flag("tool_approved", spanVals),
 		Escalation:     m.flag("escalation", spanVals),
 	}
 	if _, ok := m.pick("canary_kind", spanVals); ok {
-		s.CanaryKind = batch.CanaryKind(strings.ToLower(m.str("canary_kind", spanVals)))
+		kind := m.str("canary_kind", spanVals)
+		if !id.valid(kind) {
+			kind = "" // content or a credential is no kind: "other"
+		}
+		s.CanaryKind = batch.CanaryKind(strings.ToLower(kind))
 		s.CanaryCaught = m.flag("canary_caught", spanVals)
 	}
 	if s.Slot == "" {

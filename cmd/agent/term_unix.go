@@ -20,3 +20,10 @@ func termWidth(f *os.File) int {
 // enableColor reports whether the terminal takes ANSI colours: every Unix
 // terminal does.
 func enableColor(*os.File) bool { return true }
+
+// isTTY reports whether f is a terminal.
+func isTTY(f *os.File) bool {
+	var ws struct{ rows, cols, x, y uint16 }
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&ws)))
+	return errno == 0
+}

@@ -4,15 +4,21 @@
 // full the span is dropped and counted. Timers are unref'd, so the SDK never
 // keeps a process alive.
 
+// POST to the agent. Only http and https URLs (anything else leaves the SDK
+// off); a redirect is an error, so spans never follow one to another host;
+// the answer's body is discarded unread, whatever its size.
 function httpTransport(url, timeoutMs = 3000) {
+  const { protocol } = new URL(url);
+  if (protocol !== 'http:' && protocol !== 'https:') throw new Error('the agent URL must be http:// or https://');
   return async (body) => {
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'User-Agent': 'tellproof-js' },
       body,
+      redirect: 'error',
       signal: AbortSignal.timeout(timeoutMs),
     });
-    await r.arrayBuffer();
+    await r.body?.cancel();
     if (!r.ok) throw new Error(`agent answered HTTP ${r.status}`);
   };
 }

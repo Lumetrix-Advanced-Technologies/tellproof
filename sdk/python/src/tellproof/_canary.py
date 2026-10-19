@@ -10,6 +10,7 @@ counts as personal data, a prompt version or an LLM call.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import threading
 from typing import Any, Awaitable, Callable, Iterable
@@ -144,3 +145,81 @@ def schedule_canaries(check: Callable[[str], Any], every: float = 3600.0, kinds:
     except Exception:
         _core._fail("canary schedule")
         return None
+
+
+# Canaries through the checks decorated with @guardrail_check (D-069): on
+# while init() says so, from each check's first call, through the callable
+# that call used (a method's bound instance), then every `every` seconds. A
+# sync check runs on a daemon thread; an async one on the event loop it was
+# called on, since it may depend on that loop, moving to the next loop that
+# calls it if that one closes.
+import functools  # noqa: E402
+import time  # noqa: E402
+
+
+class _Auto:
+    """One check's automatic canaries."""
+
+    def __init__(self) -> None:
+        self.target: Callable | None = None
+        self.last = 0.0  # time.monotonic() of the last run
+        self.schedule: Schedule | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.handle: asyncio.Handle | None = None
+
+
+_auto: dict = {"every": None, "checks": {}, "tasks": set()}
+
+
+def _ensure(check, target: Callable) -> None:
+    every = _auto["every"]
+    if every is None:
+        return
+    st = _auto["checks"].get(check)
+    if st is None:
+        st = _auto["checks"][check] = _Auto()
+    st.target = target
+    if not check.is_async:
+        if st.schedule is None:
+            st.schedule = schedule_canaries(lambda text: st.target(text), every)
+        return
+    loop = asyncio.get_running_loop()
+    if st.loop is loop or (st.loop is not None and not st.loop.is_closed()):
+        return  # already on this loop, or on another one still running
+    st.loop = loop
+    delay = max(0.0, st.last + every - time.monotonic()) if st.last else 0.0
+    st.handle = loop.call_later(delay, functools.partial(_tick, st, loop))
+
+
+def _tick(st: _Auto, loop: asyncio.AbstractEventLoop) -> None:
+    every = _auto["every"]
+    if every is None or st.loop is not loop or loop.is_closed():
+        return
+    try:
+        st.last = time.monotonic()
+        t = loop.create_task(arun_canaries(lambda text: st.target(text)))
+        _auto["tasks"].add(t)
+        t.add_done_callback(_auto["tasks"].discard)
+        st.handle = loop.call_later(every, functools.partial(_tick, st, loop))  # only the latest is kept
+    except Exception:
+        _core._fail("canary tick")
+
+
+def start_auto(every: float) -> None:
+    stop_auto()
+    _auto["every"] = max(float(every), MIN_EVERY)
+    _core._ensure_canaries = _ensure
+
+
+def stop_auto() -> None:
+    _core._ensure_canaries = None
+    _auto["every"] = None
+    for st in _auto["checks"].values():
+        if st.schedule is not None:
+            st.schedule.stop()
+        if st.handle is not None:
+            try:
+                st.handle.cancel()
+            except Exception:
+                pass
+    _auto["checks"] = {}

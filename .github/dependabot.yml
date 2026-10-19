@@ -1,0 +1,14 @@
+# Weekly updates for the pinned workflow actions and the agent image's base
+# images. This repository is exported from the maintainers' working repository
+# (see CONTRIBUTING.md), so a maintainer applies each update there and the next
+# export closes the pull request here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: docker
+    directory: /cmd/agent
+    schedule: { interval: weekly }
