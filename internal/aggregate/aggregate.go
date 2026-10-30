@@ -6,7 +6,10 @@
 package aggregate
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/hex"
+	"math"
 	"slices"
 	"sync"
 	"time"
@@ -39,10 +42,241 @@ type Window struct {
 	TraceIDs []string
 }
 
+// open is an hour still receiving spans. Spans are added up as they arrive
+// (memory per span: a trace key the first time a trace is seen, and a small
+// record per model call for the change log), never kept: the agent's memory
+// does not grow with the traffic it summarises.
 type open struct {
-	spans []otlp.Span
-	evals []batch.Eval
-	late  int64
+	m                   batch.Metrics // counters; the lists are assembled in build
+	llmCalls, llmErrors int64
+	evals               []batch.Eval
+	tokens              map[tokenKey]*batch.TokenCount
+	models              map[batch.ObservedModel]struct{}
+	versions            map[batch.ObservedVersion]struct{}
+	canaries            map[string]*canaryAcc
+	traceIdx            map[traceKey]uint32
+	traces              []traceEntry
+	uses                map[useKey]*use // per slot, each model (or prompt version) used: first and last call
+	strIdx              map[string]uint32
+	strs                []string // interned slots, models, prompt names and versions; strs[0] = ""
+	seq                 uint32   // arrival order: the tie-break of a stable sort
+}
+
+type tokenKey struct{ provider, model, region string }
+
+// traceKey holds a 32-hex-digit trace ID (OTLP) as its 16 bytes, any other ID
+// (Langfuse) as itself. Byte order of the 16 bytes is the order of their
+// lower-case hex, so traces sort exactly as their IDs do.
+type traceKey struct {
+	b [16]byte
+	s string
+}
+
+func keyOf(id string) traceKey {
+	var k traceKey
+	if len(id) == 32 && isLowerHex(id) {
+		hex.Decode(k.b[:], []byte(id)) //nolint:errcheck // checked by isLowerHex
+		return k
+	}
+	k.s = id
+	return k
+}
+
+func isLowerHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func (k traceKey) String() string {
+	if k.s != "" {
+		return k.s
+	}
+	return hex.EncodeToString(k.b[:])
+}
+
+func compareKeys(x, y traceKey) int {
+	if x.s == "" && y.s == "" {
+		return bytes.Compare(x.b[:], y.b[:])
+	}
+	return cmp.Compare(x.String(), y.String())
+}
+
+// pos is where a span sorts in its window: by start, then trace ID, then
+// arrival (the order the stable sort of every span used to give).
+type pos struct {
+	start int64 // Unix nanoseconds
+	trace uint32
+	seq   uint32
+}
+
+const noTrace = math.MaxUint32 // a span without a trace ID: sorts as ""
+
+type traceEntry struct {
+	key   traceKey
+	first int64 // start of its earliest span in this window
+}
+
+type canaryAcc struct {
+	first       pos
+	run, caught int64
+}
+
+// useKey is a model in a slot (kind "model": the agent or service, and the
+// operation) or a version of a prompt (kind "prompt": the prompt name).
+type useKey struct {
+	kind        string
+	slot, value uint32 // interned
+}
+
+type use struct{ first, last pos }
+
+func newOpen() *open {
+	return &open{tokens: map[tokenKey]*batch.TokenCount{}, models: map[batch.ObservedModel]struct{}{},
+		versions: map[batch.ObservedVersion]struct{}{}, canaries: map[string]*canaryAcc{},
+		traceIdx: map[traceKey]uint32{}, uses: map[useKey]*use{}, strIdx: map[string]uint32{"": 0}, strs: []string{""}}
+}
+
+func (w *open) intern(s string) uint32 {
+	if i, ok := w.strIdx[s]; ok {
+		return i
+	}
+	i := uint32(len(w.strs))
+	w.strs = append(w.strs, s)
+	w.strIdx[s] = i
+	return i
+}
+
+func (w *open) compare(x, y pos) int {
+	if c := cmp.Compare(x.start, y.start); c != 0 {
+		return c
+	}
+	if x.trace != y.trace {
+		switch {
+		case x.trace == noTrace:
+			return -1
+		case y.trace == noTrace:
+			return 1
+		}
+		if c := compareKeys(w.traces[x.trace].key, w.traces[y.trace].key); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(x.seq, y.seq)
+}
+
+// add counts one span.
+func (w *open) add(s otlp.Span) {
+	p := pos{start: s.Start.UnixNano(), trace: noTrace, seq: w.seq}
+	w.seq++
+	if s.TraceID != "" {
+		k := keyOf(s.TraceID)
+		i, ok := w.traceIdx[k]
+		if !ok {
+			i = uint32(len(w.traces))
+			w.traceIdx[k] = i
+			w.traces = append(w.traces, traceEntry{key: k, first: p.start})
+		} else if p.start < w.traces[i].first {
+			w.traces[i].first = p.start
+		}
+		p.trace = i
+	}
+	m := &w.m
+	if s.ContentPresent {
+		m.ContentPresentSpans++
+	}
+	if s.PII {
+		m.PII.Spans++
+		if s.Redacted {
+			m.PII.SpansRedacted++
+		}
+	}
+	if s.Escalation {
+		m.Agent.Escalations++
+	}
+	if s.CanaryKind != "" {
+		c := w.canaries[s.CanaryKind]
+		if c == nil {
+			c = &canaryAcc{first: p}
+			w.canaries[s.CanaryKind] = c
+		} else if w.compare(p, c.first) < 0 { // arrived later, sorts earlier
+			c.first = p
+		}
+		c.run++
+		if s.CanaryCaught {
+			c.caught++
+		}
+	}
+	switch s.Kind {
+	case otlp.KindAgent:
+		m.Agent.Runs++
+	case otlp.KindTool:
+		m.Agent.ToolCalls++
+		if s.Error {
+			m.Agent.ToolErrors++
+		}
+		if s.HighImpact {
+			m.Agent.HighImpactCalls++
+			if s.Approved {
+				m.Agent.HighImpactApproved++
+			}
+		}
+	case otlp.KindLLM:
+		w.llmCalls++
+		if s.Error {
+			w.llmErrors++
+		}
+		k := tokenKey{s.Provider, s.Model, s.Region}
+		tc := w.tokens[k]
+		if tc == nil {
+			tc = &batch.TokenCount{Provider: s.Provider, Model: s.Model, Region: s.Region}
+			w.tokens[k] = tc
+		}
+		tc.InputTokens += s.InputTokens
+		tc.OutputTokens += s.OutputTokens
+		tc.Calls++
+		if s.Guardrail != "" {
+			m.Guardrails.GuardedCalls++
+			if s.Guardrail == "block" {
+				m.Guardrails.Blocked++
+			}
+		}
+		if s.Model != "unknown" {
+			slot := s.Slot
+			if slot == "" {
+				slot = "default"
+			}
+			w.used(useKey{"model", w.intern(slot + "\x00" + s.Operation), w.intern(s.Model)}, p)
+		}
+		if s.PromptVersion != "" {
+			name := s.PromptName
+			if name == "" {
+				name = "default"
+			}
+			w.used(useKey{"prompt", w.intern(name), w.intern(s.PromptVersion)}, p)
+		}
+		if s.Model != "unknown" {
+			w.models[batch.ObservedModel{Provider: s.Provider, Model: s.Model}] = struct{}{}
+			if s.PromptVersion != "" {
+				w.versions[batch.ObservedVersion{Model: s.Model, PromptVersion: s.PromptVersion}] = struct{}{}
+			}
+		}
+	}
+}
+
+func (w *open) used(k useKey, p pos) {
+	u := w.uses[k]
+	switch {
+	case u == nil:
+		w.uses[k] = &use{first: p, last: p}
+	case w.compare(p, u.first) < 0:
+		u.first = p
+	case w.compare(p, u.last) > 0:
+		u.last = p
+	}
 }
 
 // Aggregator is safe for concurrent use.
@@ -51,16 +285,14 @@ type Aggregator struct {
 
 	mu           sync.Mutex
 	windows      map[time.Time]*open
-	closedBefore time.Time            // every hour before this is closed
-	traceFirst   map[string]time.Time // trace ID -> hour of its first span, for leaves
-	lastModel    map[string]string    // slot -> model, for transitions
-	lastPrompt   map[string]string    // prompt name -> version
+	closedBefore time.Time          // every hour before this is closed
+	traceFirst   map[traceKey]int64 // trace ID -> hour (Unix seconds) of its first span, for leaves
+	history      History            // what each slot has in use, for changes (D-074)
 }
 
 // New returns an empty aggregator.
 func New(cfg Config) *Aggregator {
-	return &Aggregator{cfg: cfg, windows: map[time.Time]*open{}, traceFirst: map[string]time.Time{},
-		lastModel: map[string]string{}, lastPrompt: map[string]string{}}
+	return &Aggregator{cfg: cfg, windows: map[time.Time]*open{}, traceFirst: map[traceKey]int64{}, history: NewHistory()}
 }
 
 func hour(t time.Time) time.Time { return t.UTC().Truncate(time.Hour) }
@@ -80,12 +312,12 @@ func (a *Aggregator) Add(spans []otlp.Span, now time.Time) {
 		}
 		w := a.windows[h]
 		if w == nil {
-			w = &open{}
+			w = newOpen()
 			a.windows[h] = w
 		}
-		w.spans = append(w.spans, s)
+		w.add(s)
 		if late {
-			w.late++
+			w.m.LateSpans++
 		}
 	}
 }
@@ -110,7 +342,7 @@ func (a *Aggregator) AddEvals(evals []batch.Eval, now time.Time) {
 		}
 		w := a.windows[h]
 		if w == nil {
-			w = &open{}
+			w = newOpen()
 			a.windows[h] = w
 		}
 		w.evals = append(w.evals, e)
@@ -170,7 +402,7 @@ func (a *Aggregator) close(ready func(time.Time) bool) []Window {
 	}
 	// Forget traces from hours that can no longer receive spans on time.
 	for id, h := range a.traceFirst {
-		if h.Add(2 * time.Hour).Before(a.closedBefore) {
+		if time.Unix(h, 0).Add(2 * time.Hour).Before(a.closedBefore) {
 			delete(a.traceFirst, id)
 		}
 	}
@@ -180,13 +412,10 @@ func (a *Aggregator) close(ready func(time.Time) bool) []Window {
 func iso(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05Z") }
 
 func (a *Aggregator) build(h time.Time, w *open) Window {
-	spans := slices.Clone(w.spans)
-	slices.SortStableFunc(spans, func(x, y otlp.Span) int {
-		return cmp.Or(x.Start.Compare(y.Start), cmp.Compare(x.TraceID, y.TraceID))
-	})
 	end := h.Add(time.Hour)
-	m := batch.Metrics{Tokens: []batch.TokenCount{}, Evals: slices.Clone(w.evals), Transitions: []batch.Transition{},
-		Anomalies: []batch.Anomaly{}, LateSpans: w.late}
+	m := w.m
+	m.Tokens, m.Transitions, m.Anomalies = []batch.TokenCount{}, []batch.Transition{}, []batch.Anomaly{}
+	m.Evals = slices.Clone(w.evals)
 	if m.Evals == nil {
 		m.Evals = []batch.Eval{}
 	}
@@ -194,148 +423,78 @@ func (a *Aggregator) build(h time.Time, w *open) Window {
 		return cmp.Or(cmp.Compare(x.RanAt, y.RanAt), cmp.Compare(x.Suite, y.Suite), cmp.Compare(x.Model, y.Model), cmp.Compare(x.PromptVersion, y.PromptVersion))
 	})
 
-	type key struct{ provider, model, region string }
-	tokens := map[key]*batch.TokenCount{}
-	models := map[batch.ObservedModel]bool{}
-	versions := map[batch.ObservedVersion]bool{}
-	canaries := map[string]*batch.Canary{}
-	var llmCalls, llmErrors int64
+	// Leaves: each trace in the window where its first span is, ordered by that span.
+	order := make([]uint32, len(w.traces))
+	for i := range order {
+		order[i] = uint32(i)
+	}
+	slices.SortFunc(order, func(x, y uint32) int {
+		tx, ty := &w.traces[x], &w.traces[y]
+		return cmp.Or(cmp.Compare(tx.first, ty.first), compareKeys(tx.key, ty.key))
+	})
 	var traces []string
-	for _, s := range spans {
-		if s.TraceID != "" {
-			if _, seen := a.traceFirst[s.TraceID]; !seen {
-				a.traceFirst[s.TraceID] = h
-				traces = append(traces, s.TraceID)
-			}
-		}
-		if s.ContentPresent {
-			m.ContentPresentSpans++
-		}
-		if s.PII {
-			m.PII.Spans++
-			if s.Redacted {
-				m.PII.SpansRedacted++
-			}
-		}
-		if s.Escalation {
-			m.Agent.Escalations++
-		}
-		if s.CanaryKind != "" {
-			kind := s.CanaryKind
-			if canaries[kind] == nil && len(canaries) >= batch.MaxCanaryKinds {
-				kind = "other"
-			}
-			c := canaries[kind]
-			if c == nil {
-				c = &batch.Canary{Kind: kind}
-				canaries[kind] = c
-			}
-			c.Run++
-			if s.CanaryCaught {
-				c.Caught++
-			}
-		}
-		switch s.Kind {
-		case otlp.KindAgent:
-			m.Agent.Runs++
-		case otlp.KindTool:
-			m.Agent.ToolCalls++
-			if s.Error {
-				m.Agent.ToolErrors++
-			}
-			if s.HighImpact {
-				m.Agent.HighImpactCalls++
-				if s.Approved {
-					m.Agent.HighImpactApproved++
-				}
-			}
-		case otlp.KindLLM:
-			llmCalls++
-			if s.Error {
-				llmErrors++
-			}
-			k := key{s.Provider, s.Model, s.Region}
-			tc := tokens[k]
-			if tc == nil {
-				tc = &batch.TokenCount{Provider: s.Provider, Model: s.Model, Region: s.Region}
-				tokens[k] = tc
-			}
-			tc.InputTokens += s.InputTokens
-			tc.OutputTokens += s.OutputTokens
-			tc.Calls++
-			if s.Guardrail != "" {
-				m.Guardrails.GuardedCalls++
-				if s.Guardrail == "block" {
-					m.Guardrails.Blocked++
-				}
-			}
-			a.transitions(&m, s)
-			if s.Model != "unknown" {
-				models[batch.ObservedModel{Provider: s.Provider, Model: s.Model}] = true
-				if s.PromptVersion != "" {
-					versions[batch.ObservedVersion{Model: s.Model, PromptVersion: s.PromptVersion}] = true
-				}
-			}
+	for _, i := range order {
+		k := w.traces[i].key
+		if _, seen := a.traceFirst[k]; !seen {
+			a.traceFirst[k] = h.Unix()
+			traces = append(traces, k.String())
 		}
 	}
-	m.Guardrails.LLMCalls = llmCalls
+
+	// Canary kinds in the order they first appear; past the cap, "other".
+	kinds := make([]string, 0, len(w.canaries))
+	for k := range w.canaries {
+		kinds = append(kinds, k)
+	}
+	slices.SortFunc(kinds, func(x, y string) int { return w.compare(w.canaries[x].first, w.canaries[y].first) })
+	canaries := map[string]*batch.Canary{}
+	for _, k := range kinds {
+		acc, kind := w.canaries[k], k
+		if canaries[kind] == nil && len(canaries) >= batch.MaxCanaryKinds {
+			kind = "other"
+		}
+		c := canaries[kind]
+		if c == nil {
+			c = &batch.Canary{Kind: kind}
+			canaries[kind] = c
+		}
+		c.Run += acc.run
+		c.Caught += acc.caught
+	}
 	for _, c := range canaries {
 		m.Canaries = append(m.Canaries, *c)
 	}
 	slices.SortFunc(m.Canaries, func(x, y batch.Canary) int { return cmp.Compare(x.Kind, y.Kind) })
-	for _, tc := range tokens {
+
+	m.Transitions = a.changes(w)
+
+	m.Guardrails.LLMCalls = w.llmCalls
+	for _, tc := range w.tokens {
 		m.Tokens = append(m.Tokens, *tc)
 	}
 	slices.SortFunc(m.Tokens, func(x, y batch.TokenCount) int {
 		return cmp.Or(cmp.Compare(x.Provider, y.Provider), cmp.Compare(x.Model, y.Model), cmp.Compare(x.Region, y.Region))
 	})
-	if llmCalls > 0 && llmCalls >= int64(a.cfg.MinCalls) {
-		if float64(llmErrors)/float64(llmCalls) >= a.cfg.ErrorRate {
+	if w.llmCalls > 0 && w.llmCalls >= int64(a.cfg.MinCalls) {
+		if float64(w.llmErrors)/float64(w.llmCalls) >= a.cfg.ErrorRate {
 			m.Anomalies = append(m.Anomalies, batch.Anomaly{Start: iso(h), End: iso(end), Kind: "error_rate"})
 		}
-		if float64(m.Guardrails.Blocked)/float64(llmCalls) >= a.cfg.GuardrailBlock {
+		if float64(m.Guardrails.Blocked)/float64(w.llmCalls) >= a.cfg.GuardrailBlock {
 			m.Anomalies = append(m.Anomalies, batch.Anomaly{Start: iso(h), End: iso(end), Kind: "guardrail_rate"})
 		}
 	}
 	obs := batch.Observed{Models: []batch.ObservedModel{}, Versions: []batch.ObservedVersion{}}
-	for om := range models {
+	for om := range w.models {
 		obs.Models = append(obs.Models, om)
 	}
 	slices.SortFunc(obs.Models, func(x, y batch.ObservedModel) int {
 		return cmp.Or(cmp.Compare(x.Provider, y.Provider), cmp.Compare(x.Model, y.Model))
 	})
-	for ov := range versions {
+	for ov := range w.versions {
 		obs.Versions = append(obs.Versions, ov)
 	}
 	slices.SortFunc(obs.Versions, func(x, y batch.ObservedVersion) int {
 		return cmp.Or(cmp.Compare(x.Model, y.Model), cmp.Compare(x.PromptVersion, y.PromptVersion))
 	})
 	return Window{Window: batch.Window{Start: iso(h), End: iso(end)}, Start: h, Metrics: m, Observed: obs, TraceIDs: traces}
-}
-
-// transitions records a model change within the span's slot and operation
-// (so a chat model and an embeddings model used side by side are not read as
-// changes, D-033) and a prompt version change within its prompt name.
-func (a *Aggregator) transitions(m *batch.Metrics, s otlp.Span) {
-	if s.Model != "unknown" {
-		slot := s.Slot
-		if slot == "" {
-			slot = "default"
-		}
-		slot += "\x00" + s.Operation
-		if prev, ok := a.lastModel[slot]; ok && prev != s.Model {
-			m.Transitions = append(m.Transitions, batch.Transition{At: iso(s.Start), Kind: "model", From: prev, To: s.Model})
-		}
-		a.lastModel[slot] = s.Model
-	}
-	if s.PromptVersion != "" {
-		name := s.PromptName
-		if name == "" {
-			name = "default"
-		}
-		if prev, ok := a.lastPrompt[name]; ok && prev != s.PromptVersion {
-			m.Transitions = append(m.Transitions, batch.Transition{At: iso(s.Start), Kind: "prompt", From: prev, To: s.PromptVersion})
-		}
-		a.lastPrompt[name] = s.PromptVersion
-	}
 }

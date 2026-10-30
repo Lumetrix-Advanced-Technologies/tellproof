@@ -121,14 +121,30 @@ var mutations = map[string]mutation{
 		return "one call to an undeclared model", ""
 	},
 	"EO-CHG-01": func(in *evaluate.Input, f *selfFacts) (string, string) {
+		add := func(at time.Time, kind string) {
+			m := syntheticWindow(in, at)
+			m.Transitions = append(m.Transitions, batch.Transition{At: at.UTC().Format(time.RFC3339), Kind: kind, From: selfTag + "-a", To: selfTag + "-b"})
+		}
 		for _, kind := range []string{"model", "prompt"} {
 			if at, ok := unregisteredDay(in.Changes, kind, f); ok {
-				m := syntheticWindow(in, at)
-				m.Transitions = append(m.Transitions, batch.Transition{At: at.UTC().Format(time.RFC3339), Kind: kind, From: selfTag + "-a", To: selfTag + "-b"})
+				add(at, kind)
 				return "one unregistered " + kind + " change", ""
 			}
 		}
-		return "", "the change register has a model and a prompt change within a day of every day in the period, so no change can ever be unlogged"
+		// Every day is covered. If each entry doing the covering records a
+		// change the telemetry saw, the register is honest and the period
+		// short (an adopter's first days): show it can fail just after the
+		// period, as EO-EVAL-01 does. Entries that match nothing seen are
+		// what makes a register a rubber stamp.
+		for _, kind := range []string{"model", "prompt"} {
+			if onlyObservedChanges(in, kind, f) {
+				at := f.end.Add(72 * time.Hour)
+				in.System.Period.End = at.In(f.loc).Format("2006-01-02")
+				add(at, kind)
+				return "one unregistered " + kind + " change three days after the period (period stretched: every day of it is covered by registered changes the telemetry shows)", ""
+			}
+		}
+		return "", "the change register has a model and a prompt change within a day of every day in the period, and entries that match no change in the telemetry, so no change can ever be unlogged"
 	},
 	"EO-PII-01": func(in *evaluate.Input, f *selfFacts) (string, string) {
 		n := hundredfold(f.pii)
@@ -217,6 +233,52 @@ func unregisteredDay(changes []evaluate.Change, kind string, f *selfFacts) (time
 		}
 	}
 	return time.Time{}, false
+}
+
+// onlyObservedChanges says whether every register entry of kind that covers
+// a day of the period matches a change of that kind in the telemetry, within
+// a day (the evaluator's matching rule, by local date).
+func onlyObservedChanges(in *evaluate.Input, kind string, f *selfFacts) bool {
+	day := func(t time.Time) time.Time {
+		l := t.In(f.loc)
+		return time.Date(l.Year(), l.Month(), l.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	near := func(a, b time.Time) bool { return a.Sub(b) <= 24*time.Hour && b.Sub(a) <= 24*time.Hour }
+	var seen []time.Time
+	for _, w := range in.Windows {
+		for _, t := range w.Metrics.Transitions {
+			if at, err := time.Parse(time.RFC3339, t.At); err == nil && t.Kind == kind {
+				seen = append(seen, day(at))
+			}
+		}
+	}
+	slices.SortFunc(seen, func(a, b time.Time) int { return a.Compare(b) })
+	var entries []time.Time
+	first, last := day(f.start), day(f.end.Add(-time.Nanosecond))
+	for _, c := range in.Changes {
+		cd, err := time.Parse("2006-01-02", c.Date)
+		if err == nil && c.Kind == kind && !cd.Before(first.Add(-24*time.Hour)) && !cd.After(last.Add(24*time.Hour)) {
+			entries = append(entries, cd) // covers a day of the period
+		}
+	}
+	slices.SortFunc(entries, func(a, b time.Time) int { return a.Compare(b) })
+	// Each entry must record a distinct change seen: several entries around
+	// one change are the blanket pattern.
+	used := make([]bool, len(seen))
+	for _, cd := range entries {
+		i := slices.IndexFunc(seen, func(s time.Time) bool { return near(s, cd) })
+		for i >= 0 && i < len(seen) && used[i] {
+			i++
+			if i < len(seen) && !near(seen[i], cd) {
+				i = -1
+			}
+		}
+		if i < 0 || i >= len(seen) {
+			return false
+		}
+		used[i] = true
+	}
+	return len(entries) > 0
 }
 
 // hourWithoutIncident is an hour in the period with no incident opened

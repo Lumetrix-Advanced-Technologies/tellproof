@@ -419,3 +419,62 @@ func TestReceiverRefusesNonLocalHostsOnLoopback(t *testing.T) {
 		<-done
 	}
 }
+
+// Acceptance (D-074): a model and prompt swapped while the agent was stopped
+// (a deploy restarts both) is a change in the first batch after the restart,
+// from the history the agent keeps in its data directory.
+func TestChangeAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	span := func(trace, model, version string) string {
+		start := time.Now().Add(-time.Minute).UnixNano()
+		return fmt.Sprintf(`{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"claims"}}]},"scopeSpans":[{"spans":[`+
+			`{"traceId":"%032s","spanId":"00000000000000a1","name":"chat","startTimeUnixNano":"%d","endTimeUnixNano":"%d","attributes":[`+
+			`{"key":"gen_ai.operation.name","value":{"stringValue":"chat"}},{"key":"gen_ai.request.model","value":{"stringValue":"%s"}},`+
+			`{"key":"tellproof.prompt.name","value":{"stringValue":"triage"}},{"key":"tellproof.prompt.version","value":{"stringValue":"%s"}}]}]}]}]}`,
+			trace, start, start+1000, model, version)
+	}
+	run := func(trace, model, version string) {
+		c, _ := LoadConfig("", env())
+		c.DataDir = dir
+		a, err := New(c, Options{Local: true, Log: quiet(), Getenv: env("TELLPROOF_SALT_SECRET", "a-salt-secret-0123456")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Replay(strings.NewReader(span(trace, model, version))); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Shutdown(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("1", "gpt-4.1-mini", "14")
+	if _, err := os.Stat(filepath.Join(dir, HistoryFile)); err != nil {
+		t.Fatalf("no history saved: %v", err)
+	}
+	run("2", "gpt-4.1", "15") // after the "restart"
+	files, _ := filepath.Glob(filepath.Join(dir, LocalDir, "*.batch.json"))
+	if len(files) != 2 {
+		t.Fatalf("%d batches", len(files))
+	}
+	raw, _ := os.ReadFile(files[1])
+	var doc struct {
+		Envelope struct {
+			Payload []byte `json:"payload"`
+		} `json:"envelope"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var p struct {
+		Metrics struct {
+			Transitions []struct{ Kind, From, To string } `json:"transitions"`
+		} `json:"metrics"`
+	}
+	if err := json.Unmarshal(doc.Envelope.Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	got := fmt.Sprint(p.Metrics.Transitions)
+	if want := "[{model gpt-4.1-mini gpt-4.1} {prompt 14 15}]"; got != want {
+		t.Fatalf("transitions after restart = %s, want %s", got, want)
+	}
+}

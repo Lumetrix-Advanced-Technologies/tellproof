@@ -5,8 +5,8 @@
 // embeddings, legacy completions; create, which parse() and stream() call), @anthropic-ai/sdk (messages and beta
 // messages; the libraries' own stream helpers call create) and
 // @aws-sdk/client-bedrock-runtime (Converse, ConverseStream, InvokeModel,
-// InvokeModelWithResponseStream). Both the CommonJS and the ES module copy of
-// each library are patched.
+// InvokeModelWithResponseStream). The copy the app loads is patched: CommonJS
+// when the app requires it, the ES module copy in an ES module app.
 //
 // Only these are read: the request's model and stream flag, whether a Bedrock
 // guardrail is configured, and from the response its model, usage block, stop
@@ -578,12 +578,35 @@ function requirers() {
   return out;
 }
 
-// The ES module entry of an installed package, read from its package.json
-// exports["."] import condition: the app's `import` loads that file, a
-// different module instance from the one `require` loads. Node ignores the
-// "module" field (it is for bundlers), so a package without an import
-// condition (the AWS SDK) serves import from its CommonJS build: one copy,
-// already patched.
+// The file `import` loads for an installed package, resolved from its
+// package.json exports the way Node resolves them: the first condition, in
+// the object's own order, that Node's ES module loader matches ("node",
+// "import", "module-sync" where require(esm) is on, "default"). openai 6+ and
+// @anthropic-ai/sdk put the ES module build under "default" with no "import"
+// key, so that one is not optional. Returns null when import loads the same
+// file as require (no exports, the AWS SDK; or both conditions agree): one
+// copy. Node ignores the bundler-only "module" field.
+const IMPORT_CONDITIONS = new Set(['node', 'import', 'default', ...(process.features && process.features.require_module ? ['module-sync'] : [])]);
+
+function exportTarget(e, depth = 0) {
+  if (depth > 8 || e === null || e === undefined) return null;
+  if (typeof e === 'string') return e;
+  if (Array.isArray(e)) {
+    for (const x of e) {
+      const t = exportTarget(x, depth + 1);
+      if (t) return t;
+    }
+    return null;
+  }
+  if (typeof e !== 'object') return null;
+  for (const [k, v] of Object.entries(e)) {
+    if (!IMPORT_CONDITIONS.has(k)) continue;
+    const t = exportTarget(v, depth + 1);
+    if (t) return t;
+  }
+  return null;
+}
+
 function esmEntry(spec, req) {
   const dirs = (req.resolve.paths && req.resolve.paths(spec)) || [];
   for (const d of dirs) {
@@ -594,11 +617,16 @@ function esmEntry(spec, req) {
     } catch {
       continue;
     }
-    let e = pkg.exports && (typeof pkg.exports === 'string' || Array.isArray(pkg.exports) ? null : pkg.exports['.'] || pkg.exports);
-    if (!e || typeof e !== 'object' || !('import' in e)) return null;
-    e = e.import;
-    for (let depth = 0; e && typeof e === 'object' && depth < 4; depth++) e = e.node || e.default;
-    return typeof e === 'string' ? pathToFileURL(path.join(dir, e)).href : null;
+    let e = pkg.exports;
+    if (e === undefined || e === null) return null;
+    if (typeof e === 'object' && !Array.isArray(e) && Object.keys(e).some((k) => k.startsWith('.'))) e = e['.'];
+    const t = exportTarget(e);
+    if (!t) return null;
+    const file = path.join(dir, t);
+    try {
+      if (req.resolve(spec) === file) return null;
+    } catch {}
+    return pathToFileURL(file).href;
   }
   return null;
 }
@@ -639,13 +667,43 @@ function instrumentServers() {
 }
 
 let ready = Promise.resolve([]);
+const done = new Set(); // what is patched in a copy the app has loaded
+const BY_SPEC = new Map(LIBS.map(([name, spec, fn]) => [spec, [name, fn]]));
+let hooked = false;
 
-// Patch every installed library: the CommonJS copies now, the ES module copies
-// as soon as they load. Returns the names patched so far; ready() resolves
-// with the full list.
+function patchLib(name, fn, mod) {
+  try {
+    if (fn(mod)) done.add(name);
+  } catch (e) {
+    core.fail('instrument ' + name, e);
+  }
+}
+
+// CommonJS copies are patched when the app first requires them (or now, if it
+// already has). The SDK never loads a library itself: in an ES module app the
+// CommonJS copy is a second instance the app never calls, megabytes for nothing.
+function hookRequire() {
+  if (hooked) return;
+  hooked = true;
+  const Module = require('node:module');
+  patch(Module, '_load', (orig) =>
+    function _load(request) {
+      const exp = orig.apply(this, arguments);
+      const lib = typeof request === 'string' && BY_SPEC.get(request);
+      if (lib) patchLib(lib[0], lib[1], exp);
+      return exp;
+    },
+  );
+}
+
+// Patch every installed library the app uses: CommonJS copies as the app
+// requires them; when the app's entry is an ES module, the ES module copies as
+// soon as they load (the app's own static imports have loaded them already, so
+// importing them again costs nothing). A CommonJS app that import()s a client
+// passes it to instrument(). Returns the names patched so far; ready()
+// resolves with the full list.
 function install({ streamUsage: su = false, requests = false } = {}) {
   streamUsage = !!su;
-  const done = new Set();
   if (requests) {
     try {
       if (instrumentServers()) done.add('http');
@@ -653,35 +711,25 @@ function install({ streamUsage: su = false, requests = false } = {}) {
       core.fail('instrument http', e);
     }
   }
+  try {
+    hookRequire();
+  } catch (e) {
+    core.fail('instrument require', e);
+  }
+  const esmApp = !require.main;
   const esm = [];
   for (const [name, spec, fn] of LIBS) {
     for (const req of requirers()) {
-      let mod;
+      let file;
       try {
-        mod = req(spec);
+        file = req.resolve(spec);
       } catch {
         continue;
       }
-      try {
-        if (fn(mod)) done.add(name);
-      } catch (e) {
-        core.fail('instrument ' + name, e);
-      }
-      const url = esmEntry(spec, req);
-      if (url) {
-        esm.push(
-          import(url).then(
-            (ns) => {
-              try {
-                if (fn(ns)) done.add(name);
-              } catch (e) {
-                core.fail('instrument ' + name, e);
-              }
-            },
-            () => {},
-          ),
-        );
-      }
+      const loaded = require.cache[file];
+      if (loaded) patchLib(name, fn, loaded.exports);
+      const url = esmApp && esmEntry(spec, req);
+      if (url) esm.push(import(url).then((ns) => patchLib(name, fn, ns), () => {}));
       break;
     }
   }
@@ -703,6 +751,7 @@ module.exports = {
   install,
   instrument,
   ready: () => ready,
+  patched: () => [...done],
   setStreamUsage: (v) => {
     streamUsage = !!v;
   },

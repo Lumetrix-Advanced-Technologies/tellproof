@@ -296,6 +296,32 @@ func TestSelfTestFindsVacuousRegisters(t *testing.T) {
 	}
 }
 
+// An honest register over a short period (an adopter's first day: each entry
+// records a change the telemetry shows) is not vacuous; the self-test shows
+// the objective can fail just after the period (D-074).
+func TestSelfTestHonestRegisterOverOneDay(t *testing.T) {
+	dir := writeLog(t)
+	pol := basePolicy()
+	pol.Changes = []evaluate.Change{{Date: "2026-09-01", Kind: "model", What: "Sonnet 4.5 to 4.6"}, {Date: "2026-09-01", Kind: "prompt", What: "prompt 14"}}
+	r, err := SelfTest(Options{DataDir: dir, Policy: pol, Now: sampleDay})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range r.Objectives {
+		if o.ID == "EO-CHG-01" && (o.Outcome != Falsifiable || !strings.Contains(o.Injected, "three days after the period")) {
+			t.Errorf("EO-CHG-01: %s (%s)", o.Outcome, o.Injected)
+		}
+	}
+	// One honest entry plus a blanket one beside it is a rubber stamp again.
+	pol.Changes = append(pol.Changes, evaluate.Change{Date: "2026-08-31", Kind: "model", What: "routine"}, evaluate.Change{Date: "2026-08-31", Kind: "prompt", What: "routine"})
+	r, _ = SelfTest(Options{DataDir: dir, Policy: pol, Now: sampleDay})
+	for _, o := range r.Objectives {
+		if o.ID == "EO-CHG-01" && o.Outcome != Vacuous {
+			t.Errorf("with a blanket entry, EO-CHG-01: %s (%s)", o.Outcome, o.Note)
+		}
+	}
+}
+
 // Every objective in the spec has a mutation.
 func TestEveryObjectiveHasAMutation(t *testing.T) {
 	r, _ := Run(Options{DataDir: writeLog(t), Policy: basePolicy(), Now: sampleDay})

@@ -138,6 +138,11 @@ func New(cfg Config, opt Options) (*Agent, error) {
 	d.Grace = a.grace
 	d.MinCalls, d.ErrorRate, d.GuardrailBlock = cfg.Aggregation.Anomaly.MinCalls, cfg.Aggregation.Anomaly.ErrorRate, cfg.Aggregation.Anomaly.GuardrailBlockRate
 	a.agg = aggregate.New(d)
+	if a.queue != nil {
+		if err := a.loadHistory(); err != nil {
+			return nil, err
+		}
+	}
 	if err := a.setupSources(); err != nil {
 		return nil, err
 	}
@@ -337,6 +342,10 @@ func (a *Agent) emit(ctx context.Context, windows []aggregate.Window) error {
 		if err != nil {
 			return err
 		}
+		// After the batch is stored: a crash in between records a change twice, never not at all.
+		if err := a.saveHistory(); err != nil {
+			a.opt.Log.Warn("could not save the change history; a model change across the next restart may go unrecorded", "error", err.Error())
+		}
 		msg := "batch queued"
 		if a.opt.Local {
 			msg = "batch stored in the local evidence log"
@@ -365,6 +374,49 @@ func (a *Agent) usageFor(ctx context.Context, h time.Time) []batch.Usage {
 }
 
 // saveLeaves keeps the window's salted leaves so a trace can be disclosed later.
+// HistoryFile, in the data directory, keeps what each slot has in use (models
+// per agent and operation, versions per prompt) across restarts, so a model
+// swapped while the agent was down is still a change (D-074).
+const HistoryFile = "history.json"
+
+func (a *Agent) loadHistory() error {
+	path := filepath.Join(a.cfg.DataDir, HistoryFile)
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if a.queue.State().Seq > 0 {
+			a.opt.Log.Warn("no change history in a data directory with batches; changes made before this start cannot be compared",
+				"file", path)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("agent: change history: %w", err)
+	}
+	var h aggregate.History
+	if err := json.Unmarshal(b, &h); err != nil {
+		// Keep collecting evidence; say plainly what is lost.
+		a.opt.Log.Warn("change history unreadable; starting a new one, so a change made before this start may go unrecorded",
+			"file", path, "error", err.Error())
+		return nil
+	}
+	a.agg.SetHistory(h)
+	return nil
+}
+
+// saveHistory writes the history atomically (a temporary file, then rename).
+func (a *Agent) saveHistory() error {
+	b, err := json.Marshal(a.agg.History())
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(a.cfg.DataDir, HistoryFile)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 func (a *Agent) saveLeaves(seq int64, leaves []merkle.Hash) error {
 	dir := filepath.Join(a.cfg.DataDir, "leaves")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

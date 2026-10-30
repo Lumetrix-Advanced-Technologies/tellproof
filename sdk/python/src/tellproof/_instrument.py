@@ -1,6 +1,6 @@
 """Automatic instrumentation of the LLM clients an app already uses.
 
-init() patches, when the library is installed: openai (chat completions,
+init() patches, in the modules the app imports (never importing one itself): openai (chat completions,
 responses, embeddings, legacy completions; sync, async, streaming), anthropic
 (messages and beta messages; create and stream; sync and async) and botocore
 for Bedrock Runtime (Converse, ConverseStream, InvokeModel,
@@ -20,6 +20,7 @@ import importlib
 import importlib.util
 import inspect
 import sys
+import threading
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
@@ -431,35 +432,49 @@ def _observed(after: Callable[[Any], None]):
     return make
 
 
-def instrument_openai() -> bool:
-    if not _available("openai"):
-        return False
-    targets = [
-        ("openai.resources.chat.completions", ("Completions", "AsyncCompletions"), ("create", "parse"), "chat", True, False),
-        ("openai.resources.responses", ("Responses", "AsyncResponses"), ("create", "parse"), "chat", False, True),
-        ("openai.resources.embeddings", ("Embeddings", "AsyncEmbeddings"), ("create",), "embeddings", False, False),
-        ("openai.resources.completions", ("Completions", "AsyncCompletions"), ("create",), "text_completion", False, False),
-    ]
-    done = False
-    for mod_name, classes, methods, op, chat, resp in targets:
-        try:
-            mod = importlib.import_module(mod_name)
-        except Exception:
-            continue
+def _openai_classes(classes: tuple[str, ...], methods: tuple[str, ...], op: str, chat: bool, resp: bool) -> Callable[[Any], bool]:
+    def run(mod: Any) -> bool:
+        done = False
         for cls_name in classes:
             cls = getattr(mod, cls_name, None)
             for m in methods if cls is not None else ():
                 _patch(cls, m, lambda orig, op=op, chat=chat, resp=resp: wrap_call(orig, _openai_start(op, chat, resp), _openai_done))
                 done = True
-    try:
-        mod = importlib.import_module("openai.resources.moderations")
-        for cls_name in ("Moderations", "AsyncModerations"):
-            cls = getattr(mod, cls_name, None)
-            if cls is not None:
-                _patch(cls, "create", _observed(_moderation_done))
-    except Exception:
-        pass
+        return done
+    return run
+
+
+def _openai_moderations(mod: Any) -> bool:
+    for cls_name in ("Moderations", "AsyncModerations"):
+        cls = getattr(mod, cls_name, None)
+        if cls is not None:
+            _patch(cls, "create", _observed(_moderation_done))
+    return False  # a guardrail, not a model call: does not make openai "instrumented"
+
+
+_OPENAI = [
+    ("openai.resources.chat.completions", _openai_classes(("Completions", "AsyncCompletions"), ("create", "parse"), "chat", True, False)),
+    ("openai.resources.responses", _openai_classes(("Responses", "AsyncResponses"), ("create", "parse"), "chat", False, True)),
+    ("openai.resources.embeddings", _openai_classes(("Embeddings", "AsyncEmbeddings"), ("create",), "embeddings", False, False)),
+    ("openai.resources.completions", _openai_classes(("Completions", "AsyncCompletions"), ("create",), "text_completion", False, False)),
+    ("openai.resources.moderations", _openai_moderations),
+]
+
+
+def _import_and_run(targets: list[tuple[str, Callable[[Any], bool]]]) -> bool:
+    done = False
+    for mod_name, run in targets:
+        try:
+            mod = importlib.import_module(mod_name)
+        except Exception:
+            continue
+        done = run(mod) or done
     return done
+
+
+def instrument_openai() -> bool:
+    """Import and patch now (explicit use); init() patches as the app imports."""
+    return _available("openai") and _import_and_run(_OPENAI)
 
 
 # --- Anthropic --------------------------------------------------------------
@@ -585,23 +600,23 @@ def _wrap_stream_method(orig: Callable) -> Callable:
     return wrapper
 
 
-def instrument_anthropic() -> bool:
-    if not _available("anthropic"):
-        return False
+def _anthropic_messages(mod: Any) -> bool:
     done = False
-    for mod_name in ("anthropic.resources.messages", "anthropic.resources.beta.messages"):
-        try:
-            mod = importlib.import_module(mod_name)
-        except Exception:
+    for cls_name in ("Messages", "AsyncMessages"):
+        cls = getattr(mod, cls_name, None)
+        if cls is None:
             continue
-        for cls_name in ("Messages", "AsyncMessages"):
-            cls = getattr(mod, cls_name, None)
-            if cls is None:
-                continue
-            _patch(cls, "create", lambda orig: wrap_call(orig, _anthropic_start, _anthropic_done))
-            _patch(cls, "stream", _wrap_stream_method)
-            done = True
+        _patch(cls, "create", lambda orig: wrap_call(orig, _anthropic_start, _anthropic_done))
+        _patch(cls, "stream", _wrap_stream_method)
+        done = True
     return done
+
+
+_ANTHROPIC = [("anthropic.resources.messages", _anthropic_messages), ("anthropic.resources.beta.messages", _anthropic_messages)]
+
+
+def instrument_anthropic() -> bool:
+    return _available("anthropic") and _import_and_run(_ANTHROPIC)
 
 
 # --- Amazon Bedrock (botocore) ----------------------------------------------
@@ -703,18 +718,19 @@ def _make_api_call(orig: Callable) -> Callable:
     return wrapper
 
 
-def instrument_botocore() -> bool:
-    if not _available("botocore"):
-        return False
-    try:
-        client = importlib.import_module("botocore.client")
-    except Exception:
-        return False
-    base = getattr(client, "BaseClient", None)
+def _botocore_client(mod: Any) -> bool:
+    base = getattr(mod, "BaseClient", None)
     if base is None:
         return False
     _patch(base, "_make_api_call", _make_api_call)
     return True
+
+
+_BOTOCORE = [("botocore.client", _botocore_client)]
+
+
+def instrument_botocore() -> bool:
+    return _available("botocore") and _import_and_run(_BOTOCORE)
 
 
 # --- Web frameworks: one trace (request) per request ---------------------------
@@ -813,50 +829,126 @@ def _wsgi_scoped(orig: Callable) -> Callable:
     return wsgi_app
 
 
+def _class_patch(cls_name: str, patches: tuple[tuple[str, Callable], ...]) -> Callable[[Any], bool]:
+    def run(mod: Any) -> bool:
+        cls = getattr(mod, cls_name, None)
+        if cls is None:
+            return False
+        for name, make in patches:
+            _patch(cls, name, make)
+        return True
+    return run
+
+
+_FLASK = [("flask.app", _class_patch("Flask", (("wsgi_app", _wsgi_scoped),)))]
+_STARLETTE = [("starlette.applications", _class_patch("Starlette", (("__call__", _asgi_scoped),)))]  # FastAPI apps are Starlette apps
+_DJANGO = [("django.core.handlers.base", _class_patch("BaseHandler", (("get_response", _scoped), ("get_response_async", _ascoped))))]
+
+
 def instrument_flask() -> bool:
-    if not _available("flask"):
-        return False
-    cls = getattr(importlib.import_module("flask.app"), "Flask", None)
-    if cls is None:
-        return False
-    _patch(cls, "wsgi_app", _wsgi_scoped)
-    return True
+    return _available("flask") and _import_and_run(_FLASK)
 
 
-def instrument_starlette() -> bool:  # FastAPI apps are Starlette apps
-    if not _available("starlette"):
-        return False
-    cls = getattr(importlib.import_module("starlette.applications"), "Starlette", None)
-    if cls is None:
-        return False
-    _patch(cls, "__call__", _asgi_scoped)
-    return True
+def instrument_starlette() -> bool:
+    return _available("starlette") and _import_and_run(_STARLETTE)
 
 
 def instrument_django() -> bool:
-    if not _available("django"):
-        return False
-    cls = getattr(importlib.import_module("django.core.handlers.base"), "BaseHandler", None)
-    if cls is None:
-        return False
-    _patch(cls, "get_response", _scoped)
-    _patch(cls, "get_response_async", _ascoped)
-    return True
+    return _available("django") and _import_and_run(_DJANGO)
+
+
+# --- Patching as the app imports ------------------------------------------------
+#
+# init() never imports a library or a module of one: an installed library the
+# app does not use (boto3 beside an OpenAI app, Django in a Flask app) or a part
+# it does not use (openai's responses or embeddings) would cost megabytes. A
+# module already imported is patched at once; any other is patched right after
+# the app imports it, by a finder at the front of sys.meta_path that wraps the
+# loader's exec_module for those few module names and answers None to all else.
+
+_LIBS: list[tuple[str, list[tuple[str, Callable[[Any], bool]]], bool]] = [
+    ("openai", _OPENAI, False), ("anthropic", _ANTHROPIC, False), ("bedrock", _BOTOCORE, False),
+    ("flask", _FLASK, True), ("starlette", _STARLETTE, True), ("django", _DJANGO, True),
+]
+_hooks: dict[str, tuple[str, Callable[[Any], bool]]] = {}  # module name -> (library, patcher)
+_patched: list[str] = []  # libraries patched in a module the app has loaded, in _LIBS order
+_finding = threading.local()
+
+
+def _ran(lib: str, run: Callable[[Any], bool], mod: Any) -> None:
+    try:
+        if run(mod) and lib not in _patched:
+            _patched.append(lib)
+            _patched.sort(key=[n for n, _, _ in _LIBS].index)
+    except Exception:
+        _core._fail("instrument " + lib)
+
+
+class _PostImport:
+    """Patches a hooked module right after it is executed."""
+
+    def find_spec(self, name: str, path: Any = None, target: Any = None) -> Any:
+        hook = _hooks.get(name)
+        if hook is None or getattr(_finding, "busy", False):
+            return None
+        _finding.busy = True
+        try:
+            spec = None
+            for finder in sys.meta_path:
+                find = getattr(finder, "find_spec", None) if finder is not self else None
+                if find is not None:
+                    spec = find(name, path, target)
+                    if spec is not None:
+                        break
+            loader = getattr(spec, "loader", None)
+            orig = getattr(loader, "exec_module", None)
+            if orig is None or "exec_module" in getattr(loader, "__dict__", {}):
+                return spec
+
+            def exec_module(module: Any) -> None:
+                try:
+                    orig(module)
+                finally:
+                    try:
+                        del loader.exec_module  # the loader is as it was
+                    except AttributeError:
+                        pass
+                if _hooks.pop(name, None) is not None:
+                    _ran(hook[0], hook[1], module)
+
+            loader.exec_module = exec_module
+            return spec
+        except Exception:
+            return None  # never in the way of an import
+        finally:
+            _finding.busy = False
+
+
+_finder = _PostImport()
+
+
+def patched() -> list[str]:
+    """The libraries patched so far, as the app loads them."""
+    return list(_patched)
 
 
 def install(stream_usage: bool = False, requests: bool = False) -> list[str]:
-    """Patch every installed client library, and with requests the web
-    frameworks; returns the names instrumented."""
+    """Patch the client libraries (and with requests the web frameworks) the
+    app has imported, and arrange to patch the rest when it imports them;
+    returns the names patched now."""
     global _stream_usage
     _stream_usage = bool(stream_usage)
-    done = []
-    libs = [("openai", instrument_openai), ("anthropic", instrument_anthropic), ("bedrock", instrument_botocore)]
-    if requests:
-        libs += [("flask", instrument_flask), ("starlette", instrument_starlette), ("django", instrument_django)]
-    for name, fn in libs:
-        try:
-            if fn():
-                done.append(name)
-        except Exception:
-            _core._fail("instrument " + name)
-    return done
+    _hooks.clear()
+    del _patched[:]
+    for lib, targets, is_framework in _LIBS:
+        if is_framework and not requests:
+            continue
+        for mod_name, run in targets:
+            mod = sys.modules.get(mod_name)
+            if mod is not None:
+                _ran(lib, run, mod)
+            else:
+                _hooks[mod_name] = (lib, run)
+    if _hooks and _finder not in sys.meta_path:
+        sys.meta_path.insert(0, _finder)
+    return patched()

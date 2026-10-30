@@ -313,7 +313,7 @@ func initProject(ctx context.Context, o initOptions, getenv func(string) string,
 		if p.nodeEntry != "" {
 			where = p.nodeEntry
 		}
-		fmt.Fprintf(stdout, "  %d. npm install tellproof            (the SDK, with the agent as an optional dependency)\n", step)
+		fmt.Fprintf(stdout, "  %d. npm install tellproof            (the SDK, with the agent; then run its commands as npx tellproof ...)\n", step)
 		fmt.Fprintf(stdout, "  %d. At the top of %s, before the first model call:\n\n", step+1, where)
 		if p.nodeESM {
 			fmt.Fprintf(stdout, "         import * as tellproof from 'tellproof';\n         tellproof.init({ service: '%s' });\n         await tellproof.ready();   // when a model is called straight away\n\n", service)

@@ -75,18 +75,23 @@ This page is the setup and usage guide. For the architecture, the evidence model
 
 ## Quick start: two minutes, no account
 
-**1. Install the SDK and the agent, in one step.**
+**1. Install the SDK and the agent, and set up**, in your app's directory.
+
+Python 3.10+:
 
 ```bash
-pip install "tellproof[agent]"     # Python 3.10+
-npm install tellproof              # Node.js 18+ (the agent comes as an optional dependency)
+pip install "tellproof[agent]"
+tellproof init
 ```
 
-**2. Set up and start.** In your app's directory:
+Node.js 18+ (npm keeps a package's commands in `node_modules/.bin`, not on your PATH, so run them with `npx`):
 
 ```bash
-tellproof init                     # from npm: npx tellproof init
+npm install tellproof
+npx tellproof init
 ```
+
+The agent comes with the SDK (on npm as an optional dependency). Prefer a plain `tellproof` command in Node.js too? `npm install -g tellproof` puts it on your PATH; keep the project's own `npm install tellproof` for the SDK.
 
 `init` recognises a Python or Node.js project, shows the one line to add and the file it goes in, writes `tellproof.policy.json`, offers to add the agent's data directory to `.gitignore`, and starts the agent in the background. It changes no source file. The line it shows is:
 
@@ -100,9 +105,9 @@ import * as tellproof from 'tellproof';
 tellproof.init();
 ```
 
-**3. Run your app, make a model call, and open http://127.0.0.1:4319.** The first batch appears about a minute after the first call, and every hour after that. Nothing showing? `tellproof doctor` checks the setup and prints a fix for each problem.
+**2. Run your app, make a model call, and open http://127.0.0.1:4319.** The first batch appears about a minute after the first call, and every hour after that. Nothing showing? `tellproof doctor` checks the setup and prints a fix for each problem.
 
-**4. When you are done:** `tellproof stop`. `tellproof start` brings it back; `tellproof status` says whether it runs and where.
+**3. When you are done:** `tellproof stop` (`npx tellproof stop` in a Node.js project). `tellproof start` brings it back; `tellproof status` says whether it runs and where; `tellproof --version` shows the agent's and the SDK's versions.
 
 > [!TIP]
 > Only looking? `tellproof demo` serves the dashboard on a synthetic, signed week (nothing from your system), with a policy, so you can try `report`, `check` and `check --self-test` on it. Next steps: declare what the system may use and check the evidence against the eleven objectives with `tellproof policy init`, then `tellproof check` ([governance as code](#governance-as-code-policy-check-and-ai-bom)).
@@ -201,7 +206,7 @@ For most apps that is all. Every OpenAI, Anthropic and Amazon Bedrock call is re
 
 | Python | Node.js | Environment | Meaning |
 | --- | --- | --- | --- |
-| `agent` | `agent` | `TELLPROOF_AGENT_NAME` | The agent every model call belongs to (model changes are tracked per agent). |
+| `agent` | `agent` | `TELLPROOF_AGENT_NAME` | The agent every model call belongs to. Model changes are tracked per agent and operation: a model new to the agent is a change, models it uses side by side are not ([what a change is](HOW-IT-WORKS.md#from-a-model-call-to-a-signed-batch)). |
 | `prompt`, `prompt_version` | `prompt`, `promptVersion` | `TELLPROOF_PROMPT`, `TELLPROOF_PROMPT_VERSION` | The prompt (its name and version, never its text) every model call uses. Set the version from your deploy, so every prompt change shows in the evidence (and the change check asks for it in the register). |
 | `personal_data` | `personalData` | `TELLPROOF_PERSONAL_DATA=1` | Every model call handles personal data. It counts as redacted only in requests where your [`redactor`](#mark-the-functions-you-already-have) ran. |
 | `service`, `environment` | `service`, `environment` | `TELLPROOF_SERVICE` (or `OTEL_SERVICE_NAME`), `TELLPROOF_ENVIRONMENT` | The service name and deployment environment on every span. |
@@ -279,9 +284,11 @@ How the decisions count:
 | `boto3` Bedrock Runtime / `@aws-sdk/client-bedrock-runtime` | `converse`, `converse_stream`, `invoke_model`, `invoke_model_with_response_stream` (in Node.js, the matching `*Command`s through `client.send()`). |
 | Web frameworks | One trace per request: Flask, FastAPI and Starlette, Django; in Node.js every server on `node:http` or `node:https`. |
 
+A library is patched when the app loads it; the SDK never loads one itself, so an installed library the app does not use (boto3 beside an OpenAI app, Django beside Flask) costs no memory, and `stats()["instrumented"]` lists only what the app has loaded.
+
 Per call, the SDK reads the request's model and stream flag, and from the response only the model, the usage block, the stop reason and Bedrock's token-count headers. Input tokens follow what the provider bills (Anthropic: uncached + cache writes + cache reads), so traced tokens can be reconciled with billed usage. Streams are recorded once, when they end. Calls through `invoke_model_with_response_stream` and `with_raw_response` are counted without tokens, because their counts sit only inside bodies the SDK never reads.
 
-Other functions: `flush()` sends buffered spans now (in Node.js, `await tellproof.flush()` before a serverless handler or a short script returns); `shutdown()` flushes and stops (Python also runs it at exit); `is_enabled()` / `isEnabled()`; `stats()` returns counters (`spans`, `exported`, `dropped`, `export_errors`, `instrumentation_errors`, `unscoped`, `instrumented`). In Node.js, `await tellproof.ready()` once the ES-module copies of the client libraries are instrumented, if a module calls a model straight after `init()`, and `tellproof.instrument({ openai: OpenAI, anthropic: Anthropic, bedrock: await import('@aws-sdk/client-bedrock-runtime') })` for bundled apps or strict package managers where the SDK cannot find the libraries itself. The Python SDK works across threads, `asyncio` tasks and forked workers (gunicorn, uWSGI).
+Other functions: `flush()` sends buffered spans now (in Node.js, `await tellproof.flush()` before a serverless handler or a short script returns); `shutdown()` flushes and stops (Python also runs it at exit); `is_enabled()` / `isEnabled()`; `stats()` returns counters (`spans`, `exported`, `dropped`, `export_errors`, `instrumentation_errors`, `unscoped`, `instrumented`). In Node.js, `await tellproof.ready()` once the ES-module copies of the client libraries are instrumented, if a module calls a model straight after `init()`, and `tellproof.instrument({ openai: OpenAI, anthropic: Anthropic, bedrock: await import('@aws-sdk/client-bedrock-runtime') })` for bundled apps, strict package managers where the SDK cannot find the libraries itself, and CommonJS apps that load a client with `import()`. The Python SDK works across threads, `asyncio` tasks and forked workers (gunicorn, uWSGI).
 
 ### Guardrail canaries
 
@@ -611,14 +618,14 @@ Is tampering with the log detected?
 The repository is also a GitHub Action. Validate the policy on every pull request that changes it:
 
 ```yaml
-- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.1
+- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.2
   with: { command: validate, policy: tellproof.policy.json }
 ```
 
 Or gate a release on the evidence, with a copy of the agent's data directory (from a scheduled job, an artifact or a volume snapshot):
 
 ```yaml
-- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.1
+- uses: Lumetrix-Advanced-Technologies/tellproof@v0.5.2
   with: { command: check, policy: tellproof.policy.json, data-dir: evidence/, strict: "true" }
 ```
 
@@ -790,6 +797,8 @@ The agent polls the providers' usage APIs with an admin key (limit it to this sy
 ### Next to the app on one host
 
 For development, `tellproof-agent start`. For a server, run the agent as a service (systemd, launchd, or a container with `--restart unless-stopped`) and leave the defaults: the SDK finds it on `127.0.0.1:4318`.
+
+**Memory.** The agent adds spans up as they arrive and keeps no span: about 12 MB idle, and around 40 MB with 100,000 model calls in one hour, each in its own trace. On a small device, cap it with Go's soft limit, `GOMEMLIMIT=32MiB`; it collects garbage sooner as it nears the limit. The SDKs buffer at most 2,048 spans and drop new ones while the buffer is full (the agent is away), so the app never grows waiting for it.
 
 ### Docker Compose
 

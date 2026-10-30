@@ -128,6 +128,8 @@ A local log proves it has not changed since it was written, relative to `agent.p
 
 **4. Hourly windows.** Spans are aggregated into hourly windows (UTC). A window closes `grace_minutes` (default 5) after the hour, so late spans still count; spans later than that go into the next window and are counted as late. After a start, the open hour is also sent once, `first_batch_seconds` (default 60) after the first spans, so a new agent shows up at once. Windows are additive, so the rest of that hour follows when it closes.
 
+**Model and prompt changes.** A change is a model new to its slot (the agent name, else the service, and the operation) or a prompt version new to its prompt name, recorded at its first call with the slot's previous model or version. Models a slot uses side by side are never changes, however their calls interleave, and a rolling deploy is one change. What each slot has in use is kept in `history.json` in the data directory, so a model swapped while the agent was stopped (a deploy that restarts both) is still a change. A model unused for 24 of its slot's hours with calls is retired, and its return is a change again; a revert within that time shows in the hourly model table but is not a separate change (the register entry for the change it reverts covers the same day). In a slot's first hour, before there is any history, a clean switch (the old model's last call before the new one's first) is a change. Name your agents (`init(agent=...)` or `agent_run`) so each one is its own slot.
+
 **5. Trace commitments.** Each trace becomes a leaf `sha256(0x00 ‖ salt ‖ trace_id)`, where the salt is derived from a secret that stays with you. The window's leaves form a Merkle tree whose root goes in the batch. The commitment reveals nothing, yet a single trace can later be disclosed and proved to be in it; the leaves stay in the data directory for that.
 
 **6. Signed and chained.** Each batch is signed with the agent's Ed25519 key, names the previous batch's digest and carries the next sequence number, so a lost, edited or replayed batch is detected. In local mode batches are kept in `<data-dir>/local`; in connected mode they are queued (fsynced before they are acknowledged) and sent to the one server you configure, retried with backoff of up to 15 minutes.
@@ -188,6 +190,7 @@ A full batch also lists evaluation runs, model and prompt changes, anomaly windo
 | `queue/` | Connected mode: batches the server has not accepted yet. |
 | `leaves/` | Each window's commitment leaves, for disclosing a trace later. |
 | `salt.secret` (0600) | The salt secret, when the agent made one. |
+| `history.json` (0600) | What each slot has in use (models per agent and operation, versions per prompt), so a change across a restart is recorded. Deleting it makes the next start compare against nothing. |
 | `run.json` | While a local agent runs: its pid, start time, version, agent ID and addresses, for `stop` and `status`. |
 | `agent.stop` | Briefly, while `stop` asks the agent to stop. The agent watches for it: `stop` sends no signal and opens no port, so it can never reach another process. |
 | `agent.log` (0600) | The output of an agent started with `start`, rotated once at 5 MB. |

@@ -351,5 +351,68 @@ class ShutdownTest(unittest.TestCase):
         self.assertEqual(len(spans), 1)
 
 
+
+class PatchOnImport(unittest.TestCase):
+    """init() never imports a library or a module of one; it patches each when
+    the app imports it, and only what the app imports is ever loaded."""
+
+    def test_patched_when_imported_and_nothing_else_loaded(self):
+        import subprocess
+        import tempfile
+        import textwrap
+        with tempfile.TemporaryDirectory() as d:
+            files = {
+                "openai/__init__.py": "",
+                "openai/resources/__init__.py": "",
+                "openai/resources/chat/__init__.py": "",
+                "openai/resources/chat/completions.py": textwrap.dedent("""
+                    class Completions:
+                        def create(self, **kw):
+                            return None
+                    class AsyncCompletions:
+                        async def create(self, **kw):
+                            return None
+                    """),
+                "openai/resources/embeddings.py": "raise RuntimeError('never imported by the SDK')\n",
+                "botocore/__init__.py": "",
+                "botocore/client.py": "raise RuntimeError('never imported by the SDK')\n",
+                "flask/__init__.py": "",
+                "flask/app.py": "class Flask:\n    def wsgi_app(self, environ, start):\n        return []\n",
+            }
+            for name, src in files.items():
+                path = os.path.join(d, name)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    f.write(src)
+            script = textwrap.dedent("""
+                import json, sys
+                import tellproof
+                from tellproof import _instrument
+                tellproof.init(agent_url="http://127.0.0.1:9", canaries=False)
+                before = tellproof.stats()["instrumented"]
+                loaded = [m for m in ("openai", "openai.resources.chat.completions", "openai.resources.embeddings",
+                                      "botocore", "botocore.client", "flask.app") if m in sys.modules]
+                from openai.resources.chat.completions import Completions
+                import flask.app
+                print(json.dumps({"before": before, "loaded": loaded,
+                                  "wrapped": hasattr(Completions.create, _instrument._MARK),
+                                  "flask": hasattr(flask.app.Flask.wsgi_app, _instrument._MARK),
+                                  "after": tellproof.stats()["instrumented"],
+                                  "botocore": "botocore.client" in sys.modules,
+                                  "loader_restored": "exec_module" not in vars(sys.modules["flask.app"].__loader__)}))
+                """)
+            src = os.path.join(os.path.dirname(__file__), "..", "src")
+            out = subprocess.run([sys.executable, "-c", script], env={**os.environ, "PYTHONPATH": os.pathsep.join([d, src])},
+                                 capture_output=True, text=True, check=True).stdout
+        got = json.loads(out.strip().splitlines()[-1])
+        self.assertEqual(got["before"], [])          # nothing imported yet, nothing claimed
+        self.assertEqual(got["loaded"], [])          # init() imported none of them
+        self.assertTrue(got["wrapped"])
+        self.assertTrue(got["flask"])
+        self.assertEqual(got["after"], ["openai", "flask"])
+        self.assertFalse(got["botocore"])            # installed, never imported by the app: never loaded
+        self.assertTrue(got["loader_restored"])
+
+
 if __name__ == "__main__":
     unittest.main()

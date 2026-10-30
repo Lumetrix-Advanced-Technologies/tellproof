@@ -4,7 +4,33 @@ Each release's section is its release notes: the release workflow publishes the 
 
 ## Unreleased
 
-- **SDKs 0.3.2** require agent 0.5.1 or later (the `[agent]` extra, the npm optional dependency), so upgrading the SDK alone also brings `tellproof --version`.
+## v0.5.2
+
+Evidence you can rely on in more places, with a fraction of the memory. Everything here was found by testing Tellproof end to end the way an adopter uses it: a Flask app and a Node.js app on the published packages, with the current OpenAI and Anthropic clients.
+
+**Upgrading.** Take agent 0.5.2 and SDK 0.3.3 together: `pip install -U "tellproof[agent]"`, or `npm install tellproof@latest`. If you use the Node.js SDK in an ES module app, upgrade now (the first item). Batches, packs and the evaluator are unchanged; the agent records model changes by a new rule (below).
+
+### Fixed
+
+- **Node.js SDK: ES module apps recorded no model calls** with openai 6 or later or @anthropic-ai/sdk 1 or later, while `stats().instrumented` listed both. Those packages publish their ES module build under the `default` export condition, which the SDK did not follow, so it patched a copy the app never loaded. SDK 0.3.3 resolves the file `import` loads as Node does, and the real-library tests now ask Node which file that is.
+- **A model swapped while the agent was stopped is a change.** The agent remembered each agent's last model only in memory, so a model or prompt changed across a restart, which is how most deploys happen, went unrecorded. It now keeps `history.json` in its data directory.
+- **Models used side by side are not changes.** An agent using two models for two purposes reported a change at every alternation (19,999 for 20,000 interleaved calls). A change is now a model new to its agent and operation, or a prompt version new to its prompt name, at its first call; a rolling deploy is one change; a model unused for 24 of its agent's hours with calls is retired, and its return is a change again. See "Model and prompt changes" in [HOW-IT-WORKS.md](HOW-IT-WORKS.md#from-a-model-call-to-a-signed-batch).
+- **`check --self-test`** no longer calls an honest change register VACUOUS in the first days of evidence. A register with entries that match no change in the telemetry still is.
+- **A replaced `agent.pub` fails verification**: `report`, `check` and the dashboard say `FAILED` and exit 1, where they reported a configuration error (exit 2).
+- `ci keygen --out dir/key.pem` creates `dir` (mode 0700).
+
+### Memory
+
+- **The agent adds spans up as they arrive** instead of keeping every span of the hour: 100,000 model calls in one hour now take about 40 MB instead of about 100 MB, and the agent idles at about 12 MB. The figures it signs are unchanged (checked against the previous aggregator on randomized traffic). It collects garbage sooner by default (`GOGC=50`); on a small device, set `GOMEMLIMIT=32MiB`.
+- **The SDKs never load a library the app does not use.** Python: with boto3 installed but unused, `init()` imported 162 modules (12.5 MB); now about 1 MB. Node.js: no second copy of each client library (16 MB). `stats()["instrumented"]` lists what the app has loaded. A CommonJS Node.js app that loads a client with `import()` passes it to `tellproof.instrument()`.
+
+### Security
+
+- Built with Go 1.27.3, which distrusts compromised intermediate certificates in `crypto/x509` (GO-2026-6809); connected-mode enrolment uses TLS.
+
+### SDKs 0.3.3
+
+The Python and Node.js SDKs, with the fixes above, are released after this agent version (`sdk-v0.3.3`) and require agent 0.5.2 or later.
 
 ## v0.5.1
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -327,6 +328,9 @@ func verifyCIStatement(b, pubPEM []byte, unsigned bool, req cievidence.Requireme
 
 func ciKeygen(out string, stdout, stderr io.Writer) int {
 	priv, pub, err := cievidence.NewKey()
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(out), 0o700) // a new directory for the key is private
+	}
 	if err == nil {
 		var f *os.File
 		if f, err = os.OpenFile(out, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {

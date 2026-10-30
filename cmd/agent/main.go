@@ -33,6 +33,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -70,7 +71,16 @@ given. Secrets are read from the environment variables the config names.
 Exit status: 0 ok, 1 runtime error, 2 usage or config error.
 `
 
+// gcPercent is the agent's default GOGC: collect when the heap has grown by
+// half since the last collection, not doubled, so the agent's memory stays
+// close to what it holds (D-072). GOGC and GOMEMLIMIT in the environment win;
+// GOMEMLIMIT=32MiB suits a small device.
+const gcPercent = 50
+
 func main() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(gcPercent)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	os.Exit(run(ctx, os.Args[1:], os.Getenv, os.Stdout, os.Stderr))

@@ -263,7 +263,7 @@ test('content never reaches an export', async () => {
   assert.ok(!blob.includes('CONTENT-MARKER'));
 });
 
-test('the ES module finder follows exports, never the bundler-only module field', async () => {
+test('the ES module finder follows exports as Node does, never the bundler-only module field', async () => {
   const { mkdirSync, writeFileSync } = await import('node:fs');
   const dir = join(app, 'node_modules', 'only-module');
   mkdirSync(dir, { recursive: true });
@@ -271,6 +271,71 @@ test('the ES module finder follows exports, never the bundler-only module field'
   const req = createRequire(join(app, 'app.js'));
   assert.equal(ins.esmEntry('only-module', req), null); // Node serves import from main: one copy
   assert.ok(ins.esmEntry('openai', req).endsWith('/node_modules/openai/index.mjs'));
+  const shapes = {
+    // openai 6+ and @anthropic-ai/sdk 1+: the ES module build under "default", no "import" key.
+    'default-esm': { exports: { '.': { require: { types: './index.d.ts', default: './index.js' }, types: './index.d.mts', default: './index.mjs' } } },
+    'nested-esm': { exports: { '.': { node: { import: './esm/node.mjs', require: './index.js' }, default: './browser.mjs' } } },
+    'sugar-esm': { exports: { import: './index.mjs', require: './index.js' } },
+    'same-file': { exports: { '.': { default: './index.js' } } },
+    'types-only-first': { exports: { '.': { types: './index.d.ts', require: './index.js' } } },
+  };
+  for (const [name, pkg] of Object.entries(shapes)) {
+    const d = join(app, 'node_modules', name);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'package.json'), JSON.stringify({ name, ...pkg }));
+    writeFileSync(join(d, 'index.js'), 'module.exports = {};');
+  }
+  assert.ok(ins.esmEntry('default-esm', req).endsWith('/node_modules/default-esm/index.mjs'));
+  assert.ok(ins.esmEntry('nested-esm', req).endsWith('/node_modules/nested-esm/esm/node.mjs'));
+  assert.ok(ins.esmEntry('sugar-esm', req).endsWith('/node_modules/sugar-esm/index.mjs'));
+  assert.equal(ins.esmEntry('same-file', req), null); // import and require load one file: one copy
+  assert.equal(ins.esmEntry('types-only-first', req), null);
+});
+
+// The SDK patches the copy the app loads and never loads a library itself: an
+// unused copy of a client library costs megabytes (in an ES module app, the
+// CommonJS copy; in a CommonJS app, the ES module copy).
+test('only the copy the app loads is patched, and nothing else is loaded', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { writeFileSync } = await import('node:fs');
+  const sdk = JSON.stringify(require.resolve('../lib/index.cjs'));
+  const report = `const cache = Object.keys(require('node:module').createRequire(process.cwd() + '/x.js').cache);
+    const loaded = (n) => cache.some((f) => f.includes('/node_modules/' + n + '/'));`;
+  writeFileSync(join(app, 'cjs-app.cjs'), `
+    const tellproof = require(${sdk});
+    tellproof.init({ agentUrl: 'http://127.0.0.1:9', canaries: false, requests: false });
+    const before = tellproof.stats().instrumented;
+    const OpenAI = require('openai');              // required after init()
+    (async () => {
+      await new OpenAI().chat.completions.create({ model: 'm', messages: [] });
+      ${report}
+      console.log(JSON.stringify({ before, after: tellproof.stats().instrumented, spans: tellproof.stats().spans,
+        anthropic: loaded('@anthropic-ai/sdk'), bedrock: loaded('@aws-sdk/client-bedrock-runtime') }));
+      process.exit(0);
+    })();`);
+  writeFileSync(join(app, 'esm-app.mjs'), `
+    import { createRequire } from 'node:module';
+    import OpenAI from 'openai';
+    const require = createRequire(import.meta.url);
+    const tellproof = require(${sdk});
+    tellproof.init({ agentUrl: 'http://127.0.0.1:9', canaries: false, requests: false });
+    const list = await tellproof.ready();
+    await new OpenAI().chat.completions.create({ model: 'm', messages: [] });
+    ${report}
+    console.log(JSON.stringify({ list, spans: tellproof.stats().spans, cjsOpenai: loaded('openai'), anthropic: loaded('@anthropic-ai/sdk') }));
+    process.exit(0);`);
+  const run = (f) => JSON.parse(execFileSync(process.execPath, [f], { cwd: app, encoding: 'utf8' }).trim().split('\n').pop());
+  const c = run('cjs-app.cjs');
+  assert.deepEqual(c.before, []);                  // nothing loaded yet, nothing claimed
+  assert.deepEqual(c.after, ['openai']);
+  assert.equal(c.spans, 1);
+  assert.equal(c.anthropic, false);                // installed, never required: never loaded
+  assert.equal(c.bedrock, false);
+  const e = run('esm-app.mjs');
+  assert.ok(e.list.includes('openai'));
+  assert.equal(e.spans, 1);                        // the ES module copy the app imported is the patched one
+  assert.equal(e.cjsOpenai, false);                // no second, CommonJS copy
+  assert.equal(e.anthropic, false);
 });
 
 // Acceptance (P8-3, D-065): the leak corpus (spec/leak-corpus.json, shared with

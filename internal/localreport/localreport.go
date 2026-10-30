@@ -8,6 +8,7 @@ package localreport
 import (
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -127,6 +128,12 @@ func Read(dataDir string, r Range) (*Summary, error) {
 // otherwise), for the evaluator and the AI-BOM.
 func ReadBatches(dataDir string, r Range) (*Summary, []batch.Batch, error) {
 	agentID, pub, err := enrol.LoadPublic(dataDir)
+	if errors.Is(err, enrol.ErrKeyMismatch) {
+		s := &Summary{AgentID: agentID, Models: []Model{}, Evals: []batch.Eval{}, Transitions: []batch.Transition{},
+			Anomalies: []batch.Anomaly{}, Versions: []batch.ObservedVersion{}, Usage: []batch.Usage{}, Series: []Point{}, Recent: []BatchRow{}}
+		s.fail(err.Error())
+		return s, nil, nil
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("localreport: %w (is %s a local-mode data directory?)", err, dataDir)
 	}

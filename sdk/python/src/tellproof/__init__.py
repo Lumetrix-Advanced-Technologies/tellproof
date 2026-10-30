@@ -29,7 +29,7 @@ from ._core import (Guardrail, agent_run, approve, escalation, guardrail, guardr
                     personal_data, prompt, redactor, tool, trace)
 from ._export import Exporter, Transport, http_transport
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 __all__ = ["init", "shutdown", "flush", "stats", "is_enabled", "guardrail_check", "redactor", "tool", "approve",
            "escalation", "trace", "prompt", "guardrail", "Guardrail", "personal_data", "agent_run", "llm_call",
            "canary", "run_canaries", "arun_canaries", "schedule_canaries", "PROBES", "__version__"]
@@ -37,7 +37,7 @@ __all__ = ["init", "shutdown", "flush", "stats", "is_enabled", "guardrail_check"
 DEFAULT_AGENT_URL = "http://127.0.0.1:4318"
 _lock = threading.Lock()
 _atexit = False
-_instrumented: list[str] = []
+_instrumented = False  # whether init() instrumented the libraries
 
 
 def _env(name: str) -> str:
@@ -99,7 +99,9 @@ def init(agent_url: str | None = None, service: str | None = None, *, environmen
                             prompt_version or _env("PROMPT_VERSION"),
                             _flag("PERSONAL_DATA") if personal_data is None else bool(personal_data))
             _core.set_client(_core.Client(exporter, service=resource["service.name"]))
-            _instrumented = _instrument.install(stream_usage, requests=requests) if instrument else []
+            _instrumented = bool(instrument)
+            if instrument:
+                _instrument.install(stream_usage, requests=requests)
             if canaries:
                 every = 3600.0 if canaries is True else float(canaries)
                 _canary.start_auto(every)
@@ -154,4 +156,4 @@ def stats() -> dict:
     return {"enabled": c.enabled, "spans": c.stats.spans, "instrumentation_errors": c.stats.instrumentation_errors,
             "exported": e.exported if e else 0, "dropped": e.dropped if e else 0,
             "export_errors": e.export_errors if e else 0, "unscoped": c.stats.unscoped,
-            "instrumented": list(_instrumented) if c.enabled else []}
+            "instrumented": _instrument.patched() if c.enabled and _instrumented else []}

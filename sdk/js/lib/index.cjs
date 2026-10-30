@@ -19,10 +19,11 @@ const canaries = require('./canary.cjs');
 const otlp = require('./otlp.cjs');
 const { Exporter, httpTransport } = require('./export.cjs');
 
-const VERSION = '0.3.2';
+const VERSION = '0.3.3';
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:4318';
 let exitHook = false;
 let instrumented = [];
+let patched = () => []; // libraries patched since init(), as the app loads them
 
 // TELLPROOF_<name>, else PLUMBLINE_<name> from before the rename (D-056).
 function env(name) {
@@ -81,9 +82,7 @@ function init(opts = {}) {
       try {
         const ins = require('./instrument.cjs');
         instrumented = ins.install({ streamUsage: !!o.streamUsage, requests: o.requests !== false });
-        ins.ready().then((list) => {
-          instrumented = [...new Set([...instrumented, ...list])];
-        });
+        patched = ins.patched;
       } catch (e) {
         core.fail('instrument', e);
       }
@@ -137,8 +136,8 @@ async function shutdown(timeoutMs = 2000) {
 }
 
 // Resolves once the ES module copies of the client libraries are instrumented
-// too (CommonJS copies are instrumented inside init()). Await it in an ES
-// module that calls a model right after init().
+// (CommonJS copies are instrumented as the app requires them). Await it in an
+// ES module that calls a model right after init().
 async function ready() {
   try {
     await require('./instrument.cjs').ready();
@@ -176,7 +175,7 @@ function stats() {
     dropped: e ? e.dropped : 0,
     exportErrors: e ? e.exportErrors : 0,
     unscoped: c.stats.unscoped,
-    instrumented: c.enabled ? [...instrumented] : [],
+    instrumented: c.enabled ? [...new Set([...instrumented, ...patched()])] : [],
   };
 }
 

@@ -145,8 +145,15 @@ func TestReadRefusesAnotherKey(t *testing.T) {
 	}
 	pub, _ := os.ReadFile(filepath.Join(other, enrol.PublicKeyFile))
 	_ = os.WriteFile(filepath.Join(dir, enrol.PublicKeyFile), pub, 0o644)
-	if _, err := Read(dir, Range{}); err == nil || !strings.Contains(err.Error(), "does not belong") {
-		t.Fatalf("another key: %v", err)
+	// A verification failure (exit 1, never evaluated), not a configuration error.
+	s, err := Read(dir, Range{})
+	if err != nil || s.Verified || !strings.Contains(s.Problem, "does not belong") || s.Batches != 0 {
+		t.Fatalf("another key: %+v, %v", s, err)
+	}
+	var text bytes.Buffer
+	_ = WriteText(&text, s)
+	if !strings.Contains(text.String(), "FAILED: agent.pub does not belong") {
+		t.Errorf("text: %s", text.String())
 	}
 }
 

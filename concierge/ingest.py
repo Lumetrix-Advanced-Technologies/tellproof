@@ -298,6 +298,56 @@ def _iso(t: dt.datetime) -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+RETIRE_AFTER = 24  # a slot's hours with calls a value may go unused before it is retired (D-074)
+
+
+def _changes(hour_spans, history):
+    """The hour's model and prompt-version changes, updating history: the Go
+    aggregator's rule (internal/aggregate/history.go). A value new to its slot
+    is a change; values used side by side are not; a slot's first hour counts
+    only a clean switch. hour_spans are in (start, trace_id) order."""
+    uses = {}  # (kind, slot) -> {value: [first index, last index]}
+    for i, s in enumerate(hour_spans):
+        if s.kind != "llm":
+            continue
+        keys = []
+        if s.model != "unknown":
+            keys.append(("model", (s.slot or "default") + "\x00" + s.operation, s.model))
+        if s.prompt_version not in (None, ""):
+            keys.append(("prompt", s.prompt_name or "default", str(s.prompt_version)))
+        for kind, slot, value in keys:
+            u = uses.setdefault((kind, slot), {}).setdefault(value, [i, i])
+            u[1] = i
+    out = []
+    for (kind, slot) in sorted(uses):
+        vals = sorted(uses[(kind, slot)].items(), key=lambda kv: kv[1][0])
+        at = lambda u: _iso(hour_spans[u[0]].start)
+        sh = history[kind].get(slot)
+        if sh is None:
+            for i, (v, u) in enumerate(vals):
+                earlier = vals[:i]
+                if earlier and all(e[1][1] < u[0] for e in earlier):
+                    prev = max(earlier, key=lambda e: e[1][1])[0]
+                    out.append({"at": at(u), "kind": kind, "from": prev, "to": v})
+            sh = history[kind][slot] = {"last": None, "unused": {}}
+        else:
+            for v, u in vals:
+                if v not in sh["unused"] and v != sh["last"]:
+                    out.append({"at": at(u), "kind": kind, "from": sh["last"], "to": v})
+        used = {v for v, _ in vals}
+        for v in list(sh["unused"]):
+            if v not in used:
+                sh["unused"][v] += 1
+                if sh["unused"][v] >= RETIRE_AFTER:
+                    del sh["unused"][v]
+        for v in used:
+            sh["unused"][v] = 0
+        sh["last"] = max(vals, key=lambda kv: kv[1][1])[0]
+    out.sort(key=lambda t: (t["at"], t["kind"], t["from"], t["to"]))
+    return out
+
+
+
 def aggregate(spans, attrs, salt_secret: bytes):
     """Returns (windows, leaves). Each window: {window, metrics, commit}. leaves:
     hex leaf hashes in window order, then by each trace's first span time."""
@@ -314,25 +364,9 @@ def aggregate(spans, attrs, salt_secret: bytes):
     for tid, t in sorted(first_seen.items(), key=lambda kv: (kv[1], kv[0])):
         traces_by_hour[_hour(t)].append(tid)
 
-    # transitions over the whole input, in time order
-    last_model, last_prompt = {}, {}
-    transitions = defaultdict(list)
-    for s in spans:
-        if s.kind != "llm":
-            continue
-        if s.model != "unknown":
-            # Per slot and operation, so a chat model and an embeddings model
-            # used side by side are not read as changes (D-033).
-            slot = (s.slot or "default", s.operation)
-            if slot in last_model and last_model[slot] != s.model:
-                transitions[_hour(s.start)].append({"at": _iso(s.start), "kind": "model", "from": last_model[slot], "to": s.model})
-            last_model[slot] = s.model
-        if s.prompt_version not in (None, ""):
-            name = s.prompt_name or "default"
-            v = str(s.prompt_version)
-            if name in last_prompt and last_prompt[name] != v:
-                transitions[_hour(s.start)].append({"at": _iso(s.start), "kind": "prompt", "from": last_prompt[name], "to": v})
-            last_prompt[name] = v
+    # changes (D-074): carried across the hours in order
+    history = {"model": {}, "prompt": {}}
+    transitions = {hour: _changes(by_hour[hour], history) for hour in sorted(by_hour)}
 
     th = attrs["anomaly"]
     windows, all_leaves = [], []

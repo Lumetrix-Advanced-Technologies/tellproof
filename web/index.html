@@ -23,10 +23,13 @@
   <h1>Evidence that tells on itself</h1>
   <p class="lede">Tellproof turns an AI system's runtime telemetry into signed, hour-by-hour evidence that a bank, an insurer or an auditor can check without trusting you. No prompt or completion ever leaves your machine. And every check can be shown to fail: an edited hour, a guardrail that stopped catching or a CI gate that tests nothing gives itself away.</p>
 
-  <pre><code>pip install "tellproof[agent]"     # the SDK and the agent; or: npm install tellproof
+  <pre><code>pip install "tellproof[agent]"     # Python: the SDK and the agent
 tellproof init                     # in your app's directory: the SDK line, a policy, the agent in the background
-tellproof stop                     # when you are done (from npm: npx tellproof ...)
-tellproof demo                     # or just look: the dashboard on a synthetic week</code></pre>
+
+npm install tellproof              # Node.js: the SDK, with the agent
+npx tellproof init                 # npm keeps commands in node_modules/.bin: run them with npx
+
+tellproof stop                     # when you are done (npx tellproof stop); tellproof demo just looks</code></pre>
   <p class="small muted">Then add <code>tellproof.init()</code> to your app. Python and Node.js; OpenAI, Anthropic and Amazon Bedrock are instrumented automatically. No account needed.</p>
 
   <div class="cards">

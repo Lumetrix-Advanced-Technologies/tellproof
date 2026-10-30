@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { rmSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Capture } from './scenario.mjs';
 
@@ -15,15 +16,30 @@ const ins = require('../lib/instrument.cjs');
 const appRequire = createRequire(join(process.cwd(), 'app.js'));
 const MARK = 'REAL-LIB-MARKER';
 
+// Node itself says which file the app's `import` loads (never the SDK's own
+// finder, which is what is under test): a module in the app directory resolves it.
+const resolver = join(process.cwd(), `.tellproof-resolve-${process.pid}.mjs`);
+writeFileSync(resolver, 'export const resolve = (s) => import.meta.resolve(s);\n');
+const { resolve: nodeResolve } = await import(pathToFileURL(resolver).href);
+rmSync(resolver);
+
 function load(spec) {
+  let cjs;
   try {
-    // Without an import condition, Node serves import from the CommonJS file too.
-    return { cjs: appRequire(spec), esmUrl: ins.esmEntry(spec, appRequire) || pathToFileURL(appRequire.resolve(spec)).href };
+    cjs = appRequire(spec);
   } catch {
     return null;
   }
+  return { cjs, esmUrl: nodeResolve(spec), cjsUrl: pathToFileURL(appRequire.resolve(spec)).href };
 }
 const libs = { openai: load('openai'), anthropic: load('@anthropic-ai/sdk'), bedrock: load('@aws-sdk/client-bedrock-runtime') };
+
+test('the finder names the file Node imports, or null when import shares the CommonJS copy', () => {
+  for (const [spec, lib] of [['openai', libs.openai], ['@anthropic-ai/sdk', libs.anthropic], ['@aws-sdk/client-bedrock-runtime', libs.bedrock]]) {
+    if (!lib) continue;
+    assert.equal(ins.esmEntry(spec, appRequire) || lib.cjsUrl, lib.esmUrl, spec);
+  }
+});
 
 const sse = (events) => events.map(([name, data]) => (name ? `event: ${name}\n` : '') + `data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`).join('');
 const CHAT = { id: 'c', object: 'chat.completion', created: 1, model: 'gpt-4.1-mini-2025-04-14',

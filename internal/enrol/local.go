@@ -72,8 +72,14 @@ func writePublic(dir string, pub ed25519.PublicKey) error {
 	return os.Chmod(path, 0o644)
 }
 
+// ErrKeyMismatch: agent.pub is not the key of the agent named in agent.json.
+// The log cannot be trusted relative to that key: a verification failure,
+// not a configuration error.
+var ErrKeyMismatch = errors.New("agent.pub does not belong to the agent in agent.json (the key or the agent ID was replaced)")
+
 // LoadPublic reads the public key a local evidence log was signed with and
 // the agent ID it belongs to (from agent.json), without the private key.
+// A key that is not that agent's returns the agent ID and ErrKeyMismatch.
 func LoadPublic(dir string) (agentID string, pub ed25519.PublicKey, err error) {
 	id, err := readIdentity(dir)
 	if err != nil {
@@ -96,7 +102,7 @@ func LoadPublic(dir string) (agentID string, pub ed25519.PublicKey, err error) {
 		return "", nil, errors.New("enrol: agent.pub is not an Ed25519 key")
 	}
 	if sum := sha256.Sum256(p); id.AgentID != LocalPrefix+hex.EncodeToString(sum[:12]) {
-		return "", nil, errors.New("enrol: agent.pub does not belong to the agent in agent.json")
+		return id.AgentID, nil, ErrKeyMismatch
 	}
 	return id.AgentID, p, nil
 }
