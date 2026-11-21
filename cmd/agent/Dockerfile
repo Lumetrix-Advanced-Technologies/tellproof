@@ -8,7 +8,7 @@
 #     -v tellproof-agent:/data -e TELLPROOF_SERVER=https://<server> tellproof-agent connect <token>
 # The build stage runs on the builder's platform and cross-compiles, so a
 # multi-platform build (--platform linux/amd64,linux/arm64) needs no emulation.
-FROM --platform=$BUILDPLATFORM golang:1.27@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27@sha256:205c7636d74e0ffbe3d007162df7d74f859f5a8c8322dfb9f907977686c126cf AS build
 ARG VERSION=dev
 ARG TAGS=
 ARG TARGETOS=linux
